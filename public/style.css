@@ -51,25 +51,18 @@ button { background:var(--gold); cursor:pointer; color:#222; }
     height:var(--zone-h); display:flex; align-items:center; justify-content:flex-start; gap:10px;
     padding:5px 15px; background:transparent;
     overflow-x:auto; white-space:nowrap; -webkit-overflow-scrolling:touch;
-
-    /* HIDE SCROLLBARS */
-    -ms-overflow-style: none;  /* IE/Edge */
-    scrollbar-width: none;  /* Firefox */
+    -ms-overflow-style: none; scrollbar-width: none;
 }
 #opponents-zone::-webkit-scrollbar { display: none; }
 #opponents-zone::after { content:""; flex:0 0 10px; }
 
-/* SEAT LAYOUT (Default: Pile Left, Info Right) */
+/* SEAT LAYOUT */
 .seat {
     text-align:center; min-width:60px; opacity:0.8; transition:0.3s;
-    /* Grid Layout for Windows/Landscape */
     display: inline-grid;
     grid-template-columns: auto 1fr;
     grid-template-rows: auto auto auto;
-    grid-template-areas:
-        "pile avatar"
-        "pile name"
-        "pile count";
+    grid-template-areas: "pile avatar" "pile name" "pile count";
     align-items: center; justify-items: center;
     gap: 0 10px;
     background: rgba(0,0,0,0.2); padding: 5px; border-radius: 8px;
@@ -90,8 +83,12 @@ button { background:var(--gold); cursor:pointer; color:#222; }
     height:var(--zone-h); background:transparent; display:grid; grid-template-columns:70px 1fr 70px;
     align-items:center; padding:0 10px; position:relative;
 }
+
+/* HAND SPACING UPDATE */
 #hand {
-    display:flex; gap:-5px; height:100%;
+    display:flex;
+    gap: 5px; /* Added positive gap for spacing */
+    height:100%;
     align-items:center; justify-content:center;
     overflow-x:auto; padding:0 10px;
     -ms-overflow-style: none; scrollbar-width: none;
@@ -150,46 +147,63 @@ button { background:var(--gold); cursor:pointer; color:#222; }
 /* ================= MOBILE ================= */
 @media (max-width: 900px) and (orientation: portrait) {
     #rotate-overlay { display: flex; }
-
-    /* Fallback for portrait if overlay fails/testing: Revert to Vertical Stack */
-    .seat {
-        display: inline-flex;
-        flex-direction: column;
-        gap: 0;
-    }
 }
 
 @media (max-height: 500px) and (orientation: landscape) {
     :root { --card-w:45px; --card-h:65px; --zone-h:100px; }
+
     #opponents-zone { height:90px; }
 
-    /* Seat is already Grid (Pile Left) by default, just adjust sizing if needed */
+    /* Seat Sizing */
     .seat { min-width: 50px; gap: 5px; }
 
-    #player-zone { height:110px; grid-template-columns:60px 1fr 60px; align-items: flex-start; padding-top: 10px; }
+    /* PLAYER ZONE CONFIGURATION */
+    #player-zone {
+        height:110px;
+        grid-template-columns:60px 1fr 60px;
+        align-items: flex-end;
+        padding-bottom: 10px;
+        padding-top: 0;
+    }
 
-    /* FIX: Card Cutoff in Landscape */
+    /* HAND CONFIGURATION */
     #hand {
         align-items: center;
-        padding-top: 25px; /* Added Top Padding for Selected Card Pop-up */
-        padding-bottom: 5px;
+        padding: 10px;
         min-height: 100%;
-    }
-    .card.selected { transform: translateY(-15px); } /* Slightly less pop */
-
-    /* Smaller Buttons for Landscape Mobile */
-    #controls { bottom: 115px; gap: 5px; max-width: 280px; width: 95%; }
-    .btn-act {
-        padding: 6px 0;
-        font-size: 0.75rem;
-        border-width: 1px;
+        gap: 3px; /* Slightly tighter gap on mobile landscape, but still positive */
     }
 
-    #deck-area { left:15px; transform:scale(0.8) translateY(-50%); }
+    .card.selected { transform: translateY(-10px); }
+
+    /* FULLSCREEN BUTTON: Bottom Right */
+    #btn-full {
+        top: auto; left: auto;
+        bottom: 10px; right: 10px;
+    }
+
+    /* INFO: Above Button */
+    .info {
+        justify-content: flex-end;
+        margin-bottom: 40px;
+    }
+
+    .pile-wrapper { justify-content: flex-end; }
+
+    /* CONTROLS */
+    #controls { bottom: 95px; gap: 5px; max-width: 280px; width: 95%; }
+    .btn-act { padding: 6px 0; font-size: 0.75rem; border-width: 1px; }
+
+    /* DECK: REMOVED SCALE TRANSFORM so it matches face-up size */
+    #deck-area {
+        left:15px;
+        transform: translateY(-50%); /* Only center Y, don't scale down */
+    }
+
     .game-title { font-size:1.5rem; margin:10px; }
 }
 
 @media (max-width: 600px) {
-    /* Smaller Buttons for Portrait Mobile (if used) */
+    /* For small portrait fallback if needed */
     .btn-act { padding: 8px 0; font-size: 0.8rem; }
 }
