@@ -2,7 +2,7 @@ import { analyzeMoveLogic } from './game.js';
 
 const socket = io();
 let myId = -1, room = null, state = null, selIdx = -1;
-let actionPending = false; // Prevent double clicks
+let actionPending = false;
 const el = (id) => document.getElementById(id);
 
 const UI = {
@@ -22,7 +22,7 @@ const UI = {
     mkBack() { const d = document.createElement('div'); d.className='card card-back'; return d; },
 
     update() {
-        actionPending = false; // Reset lock on state update
+        actionPending = false;
 
         // Deck
         el('d-count').innerText = state.deckCount;
@@ -52,12 +52,14 @@ const UI = {
         const me = state.players[myId];
         const isMyTurn = state.currentPlayerIdx === myId;
 
+        // Update Score & Turn Indicator
         el('score-txt').innerText = `Score: ${me.pile.reduce((a,c)=>a+c.val,0)}`;
-        el('score-txt').style.color = isMyTurn ? "#2ecc71" : "gold";
+        el('score-txt').style.color = isMyTurn ? "#2ecc71" : "gold"; // Green if turn, Gold otherwise
         el('score-txt').style.textShadow = isMyTurn ? "0 0 10px #2ecc71" : "none";
 
         const mp = el('my-pile'); mp.innerHTML = '';
         mp.className = me.pile.length > 0 ? 'card-pile' : 'card-pile empty';
+
         if(me.pile.length > 0) {
             mp.appendChild(this.mkCard(me.pile[me.pile.length-1]));
             mp.innerHTML += `<div class="pile-count">${me.pile.length}</div>`;
@@ -145,7 +147,6 @@ window.onload = () => {
     }
     el('btn-join').onclick = () => socket.emit('joinRoom', { roomId: el('room-in').value.toUpperCase().trim(), playerName: el('p-name').value||"Guest" });
 
-    // CLICK HANDLERS WITH PENDING CHECK
     el('btn-draw').onclick = () => {
         if(actionPending) return;
         actionPending = true;
@@ -176,6 +177,7 @@ window.onload = () => {
 socket.on('roomJoined', (d) => {
     room = d.roomId; myId = d.playerId; state = d.state;
     el('room-code-text').innerText = room;
+    document.body.classList.add('in-game-mode');
     UI.showPage('game');
     UI.update();
 });

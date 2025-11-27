@@ -84,11 +84,9 @@ button { background:var(--gold); cursor:pointer; color:#222; }
     align-items:center; padding:0 10px; position:relative;
 }
 
-/* HAND SPACING UPDATE */
+/* Hand */
 #hand {
-    display:flex;
-    gap: 5px; /* Added positive gap for spacing */
-    height:100%;
+    display:flex; gap: 5px; height:100%;
     align-items:center; justify-content:center;
     overflow-x:auto; padding:0 10px;
     -ms-overflow-style: none; scrollbar-width: none;
@@ -97,7 +95,7 @@ button { background:var(--gold); cursor:pointer; color:#222; }
 
 .pile-wrapper, .info { text-align:center; display:flex; flex-direction:column; align-items:center; justify-content:center; }
 
-/* HIDE TURN TEXT globally as requested */
+/* HIDE TURN TEXT GLOBALLY */
 #turn-txt { display: none; }
 
 /* --- CARDS --- */
@@ -149,51 +147,37 @@ button { background:var(--gold); cursor:pointer; color:#222; }
 
 /* ================= MOBILE ================= */
 @media (max-width: 900px) and (orientation: portrait) {
-    #rotate-overlay { display: flex; }
+    body.in-game-mode #rotate-overlay { display: flex; }
 }
 
 @media (max-height: 500px) and (orientation: landscape) {
     :root { --card-w:45px; --card-h:65px; --zone-h:100px; }
-
     #opponents-zone { height:90px; }
-
-    /* Seat Sizing */
     .seat { min-width: 50px; gap: 5px; }
 
-    /* PLAYER ZONE CONFIGURATION */
     #player-zone {
-        height:110px;
-        grid-template-columns:60px 1fr 60px;
-        align-items: flex-end;
+        height:110px; grid-template-columns:60px 1fr 60px;
+        align-items: flex-end; /* Bottom align wrappers */
         padding-bottom: 10px;
         padding-top: 0;
     }
 
-    /* HAND CONFIGURATION */
     #hand {
-        align-items: flex-end; /* Align cards to bottom */
-        padding: 0; /* Removed padding */
+        align-items: flex-end; /* Cards flush with bottom */
+        padding: 0; /* Remove padding so they hit the bottom edge of the container */
         min-height: 100%;
         gap: 3px;
     }
 
     .card.selected { transform: translateY(-10px); }
 
-    /* FULLSCREEN BUTTON: Bottom Right */
-    #btn-full {
-        top: auto; left: auto;
-        bottom: 10px; right: 10px;
-    }
+    /* Fullscreen Button Bottom Right */
+    #btn-full { top: auto; left: auto; bottom: 10px; right: 10px; }
 
     /* INFO: Above Button */
-    .info {
-        justify-content: flex-end;
-        margin-bottom: 40px;
-    }
-
+    .info { justify-content: flex-end; margin-bottom: 40px; }
     .pile-wrapper { justify-content: flex-end; }
 
-    /* CONTROLS */
     #controls { bottom: 95px; gap: 5px; max-width: 280px; width: 95%; }
     .btn-act { padding: 6px 0; font-size: 0.75rem; border-width: 1px; }
 
