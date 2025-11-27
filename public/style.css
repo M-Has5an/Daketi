@@ -23,13 +23,14 @@ body {
 .hidden-page { opacity:0; pointer-events:none; position:absolute; top:0; width:100%; height:100dvh; }
 .hidden { display: none !important; }
 
-/* --- FULLSCREEN BUTTON --- */
+/* --- FULLSCREEN BUTTON (Default: HIDDEN on Desktop) --- */
 #btn-full {
+    display: none; /* Hidden by default for PC */
     position: fixed; top: 10px; left: 10px; z-index: 999;
     background: rgba(0,0,0,0.5); color: white; border: 1px solid white;
     width: 35px; height: 35px; border-radius: 5px;
     font-size: 1.2rem; cursor: pointer; padding: 0;
-    display: flex; align-items: center; justify-content: center;
+    align-items: center; justify-content: center;
 }
 
 /* --- LOBBY --- */
@@ -59,12 +60,10 @@ button { background:var(--gold); cursor:pointer; color:#222; }
 /* SEAT LAYOUT */
 .seat {
     text-align:center; min-width:60px; opacity:0.8; transition:0.3s;
-    display: inline-grid;
-    grid-template-columns: auto 1fr;
+    display: inline-grid; grid-template-columns: auto 1fr;
     grid-template-rows: auto auto auto;
     grid-template-areas: "pile avatar" "pile name" "pile count";
-    align-items: center; justify-items: center;
-    gap: 0 10px;
+    align-items: center; justify-items: center; gap: 0 8px;
     background: rgba(0,0,0,0.2); padding: 5px; border-radius: 8px;
 }
 .seat.active { opacity:1; transform:scale(1.05); filter:drop-shadow(0 0 5px gold); background: rgba(0,0,0,0.4); }
@@ -73,18 +72,16 @@ button { background:var(--gold); cursor:pointer; color:#222; }
 .seat > div:nth-child(3) { grid-area: count; }
 .seat .card-pile { grid-area: pile; margin: 0; }
 
-/* Table */
 #table { flex-grow:1; margin:5px; position:relative; display:flex; justify-content:center; align-items:center; overflow:hidden; }
 #face-up-area { display:flex; gap:5px; flex-wrap:wrap; justify-content:center; padding:10px; max-height:100%; overflow-y:auto; }
 #deck-area { position:absolute; left:20px; top:50%; transform:translateY(-50%); text-align:center; z-index:2; }
 
-/* Player Zone */
 #player-zone {
     height:var(--zone-h); background:transparent; display:grid; grid-template-columns:70px 1fr 70px;
     align-items:center; padding:0 10px; position:relative;
 }
 
-/* Hand */
+/* Hand (Desktop View) */
 #hand {
     display:flex; gap: 5px; height:120%;
     align-items:center; justify-content:center;
@@ -103,26 +100,25 @@ button { background:var(--gold); cursor:pointer; color:#222; }
     width:var(--card-w); height:var(--card-h); background:white; border-radius:4px; color:black;
     display:flex; flex-direction:column; justify-content:space-between; padding:2px 4px;
     box-sizing:border-box; font-weight:bold; cursor:pointer; box-shadow:0 2px 4px rgba(0,0,0,0.5); flex-shrink:0;
-    font-size: calc(var(--card-w) * 0.35); line-height: 1;
+    font-size: calc(var(--card-w) * 0.35); line-height: 1; transition: transform 0.1s;
 }
 .card.red { color:var(--red); }
 
-/* FIX: Use box-shadow instead of border to preserve rounded corners */
+/* FIX: Use Box Shadow for selection to keep rounded corners */
 .card.selected {
     transform:translateY(-20px);
     z-index:10;
-    /* 3px solid gold ring + 15px glow */
     box-shadow: 0 0 0 3px var(--gold), 0 0 15px var(--gold);
 }
-
 .card-back { background:repeating-linear-gradient(45deg, #2c3e50, #2c3e50 5px, #34495e 5px, #34495e 10px); border:2px solid white; }
-
 .card-pile { width:var(--card-w); height:var(--card-h); background:rgba(255,255,255,0.1); border:2px dashed rgba(255,255,255,0.4); border-radius:4px; position:relative; display:flex; align-items:center; justify-content:center; cursor: pointer; }
 .pile-count { background:var(--red); color:white; border-radius:50%; width:22px; height:22px; font-size:0.75rem; font-weight:bold; display:flex; align-items:center; justify-content:center; position:absolute; top:-10px; right:-10px; z-index:5; border:2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3); }
 
-/* --- CONTROLS --- */
+/* --- CONTROLS (Desktop) --- */
 #controls {
-    position:absolute; bottom: calc(var(--zone-h) + 30px); left:50%; transform:translateX(-50%);
+    position:absolute;
+    bottom: calc(var(--zone-h) + 30px); /* Raised for desktop */
+    left:50%; transform:translateX(-50%);
     display:flex; justify-content:center; align-items:center; gap:15px; pointer-events:none; z-index:100;
     width: 90%; max-width: 400px;
 }
@@ -154,12 +150,18 @@ button { background:var(--gold); cursor:pointer; color:#222; }
 #rotate-overlay span { font-size: 3rem; margin-bottom: 20px; }
 
 /* ================= MOBILE ================= */
+
+/* Portrait Phones: Show Overlay, Show Fullscreen Button */
 @media (max-width: 900px) and (orientation: portrait) {
     body.in-game-mode #rotate-overlay { display: flex; }
+    #btn-full { display: flex; } /* Enable button on mobile */
 }
 
+/* Landscape Phones: Show Fullscreen Button */
 @media (max-height: 500px) and (orientation: landscape) {
     :root { --card-w:45px; --card-h:65px; --zone-h:100px; }
+
+    #btn-full { display: flex; } /* Enable button on mobile */
 
     #opponents-zone { height:90px; }
     .seat { min-width: 50px; gap: 5px; }
@@ -169,14 +171,7 @@ button { background:var(--gold); cursor:pointer; color:#222; }
         align-items: flex-end; padding-bottom: 10px; padding-top: 0;
     }
 
-    #hand {
-        align-items: flex-end;
-        padding: 0;
-        min-height: 100%;
-        gap: 3px;
-    }
-
-    /* Also fix selection in landscape */
+    #hand { align-items: flex-end; padding: 0; min-height: 100%; gap: 3px; height: 100%; }
     .card.selected { transform: translateY(-10px); }
 
     #btn-full { top: auto; left: auto; bottom: 10px; right: 10px; }
@@ -192,4 +187,5 @@ button { background:var(--gold); cursor:pointer; color:#222; }
 
 @media (max-width: 600px) {
     .btn-act { padding: 8px 0; font-size: 0.8rem; }
+    #btn-full { display: flex; } /* Ensure visible on small screens */
 }
