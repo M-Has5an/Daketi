@@ -37,7 +37,7 @@ const UI = {
             let pile = `<div class="card-pile empty"></div>`;
             if(p.pile.length > 0) pile = `<div class="card-pile">${this.mkCard(p.pile[p.pile.length-1]).outerHTML}<div class="pile-count">${p.pile.length}</div></div>`;
 
-            // Updated Grid Layout for Opponent
+            // Grid Layout Construction
             opp.innerHTML += `<div class="seat ${act}" id="seat-${p.id}">
                 <div class="bot-avatar">${p.isBot?'🤖':'👤'}</div>
                 <div style="font-size:0.8rem; font-weight:bold; color:${p.isBot?'#ccc':'gold'}">${p.name}</div>
@@ -49,31 +49,36 @@ const UI = {
         // Me
         const me = state.players[myId];
 
-        // Update Score Only
-        el('score-txt').innerText = "Score: " + me.pile.reduce((a,c)=>a+c.val,0);
-        // Add visual highlight to score if my turn
-        el('score-txt').style.color = (state.currentPlayerIdx === myId) ? "#2ecc71" : "gold";
-        el('score-txt').style.textShadow = (state.currentPlayerIdx === myId) ? "0 0 10px #2ecc71" : "none";
+        // Update Score & Turn Indicator
+        const isMyTurn = state.currentPlayerIdx === myId;
+        el('score-txt').innerText = isMyTurn ? "YOUR TURN" : `Score: ${me.pile.reduce((a,c)=>a+c.val,0)}`;
+        el('score-txt').style.color = isMyTurn ? "#2ecc71" : "gold"; // Green if turn, Gold otherwise
+        el('score-txt').style.textShadow = isMyTurn ? "0 0 10px #2ecc71" : "none";
 
         const mp = el('my-pile'); mp.innerHTML = '';
         mp.className = me.pile.length > 0 ? 'card-pile' : 'card-pile empty';
+
         if(me.pile.length > 0) {
             mp.appendChild(this.mkCard(me.pile[me.pile.length-1]));
             mp.innerHTML += `<div class="pile-count">${me.pile.length}</div>`;
         }
-        mp.onclick = () => { if(me.pile.length > 0) UI.showPile(me.pile); };
+
+        // Click Pile to View
+        mp.onclick = () => {
+            if(me.pile.length > 0) UI.showPile(me.pile);
+        };
 
         const hd = el('hand'); hd.innerHTML = '';
         if(me.hand) me.hand.forEach((c, i) => {
             hd.appendChild(this.mkCard(c, () => {
-                if(state.currentPlayerIdx===myId && state.turnPhase==='PLAY') { selIdx = selIdx===i?-1:i; UI.update(); }
+                if(isMyTurn && state.turnPhase==='PLAY') { selIdx = selIdx===i?-1:i; UI.update(); }
             }, i===selIdx));
         });
 
         // Buttons
         el('btn-draw').classList.remove('show'); el('btn-cap').classList.remove('show'); el('btn-disc').classList.remove('show');
 
-        if(state.currentPlayerIdx === myId) {
+        if(isMyTurn) {
             if(state.turnPhase === 'DRAW') {
                 el('btn-draw').classList.add('show');
             }
@@ -141,6 +146,15 @@ const UI = {
 };
 
 window.onload = () => {
+    // Fullscreen Logic
+    el('btn-full').onclick = () => {
+        if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen().catch(e => console.log(e));
+        } else if (document.exitFullscreen) {
+            document.exitFullscreen();
+        }
+    };
+
     el('btn-create').onclick = () => {
         const config = { numPlayers: parseInt(el('p-count').value), handSize: parseInt(el('set-hand').value), faceUpSize: parseInt(el('set-faceup').value) };
         socket.emit('createRoom', { playerName: el('p-name').value||"Host", config: config });
@@ -169,7 +183,7 @@ socket.on('roomJoined', (d) => {
 });
 socket.on('stateUpdate', (s) => { state = s; selIdx = -1; UI.update(); });
 socket.on('error', (m) => alert(m));
-socket.on('gameOver', (p) => UI.showSummary(p)); // Use new Summary UI
+socket.on('gameOver', (p) => UI.showSummary(p));
 
 socket.on('animation', async (d) => {
     const { type, playerId, details } = d;

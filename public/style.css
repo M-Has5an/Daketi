@@ -13,11 +13,24 @@
 }
 
 /* --- BASE --- */
-body { margin:0; font-family:'Segoe UI', sans-serif; background:var(--bg); color:white; height:100vh; width:100vw; overflow:hidden; user-select:none; touch-action:manipulation; }
+body {
+    margin:0; font-family:'Segoe UI', sans-serif; background:var(--bg); color:white;
+    height: 100dvh; width: 100vw;
+    overflow: hidden; user-select: none; touch-action: manipulation;
+}
 
-.active-page { opacity:1; z-index:10; transition:0.5s; position:absolute; top:0; width:100%; height:100%; display:flex; flex-direction:column; }
-.hidden-page { opacity:0; pointer-events:none; position:absolute; top:0; width:100%; height:100%; }
+.active-page { opacity:1; z-index:10; transition:0.5s; position:absolute; top:0; width:100%; height:100dvh; display:flex; flex-direction:column; }
+.hidden-page { opacity:0; pointer-events:none; position:absolute; top:0; width:100%; height:100dvh; }
 .hidden { display: none !important; }
+
+/* --- FULLSCREEN BUTTON --- */
+#btn-full {
+    position: fixed; top: 10px; left: 10px; z-index: 999;
+    background: rgba(0,0,0,0.5); color: white; border: 1px solid white;
+    width: 35px; height: 35px; border-radius: 5px;
+    font-size: 1.2rem; cursor: pointer; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+}
 
 /* --- LOBBY --- */
 #lobby { align-items:center; justify-content:center; background:linear-gradient(135deg, #2c3e50, #000); overflow-y:auto; }
@@ -26,34 +39,40 @@ input, select, button { width:100%; padding:12px; margin:5px 0; border-radius:5p
 button { background:var(--gold); cursor:pointer; color:#222; }
 .title { font-size: clamp(2rem, 5vw, 4rem); color:var(--gold); margin-bottom:20px; }
 
-/* --- GAME (Poker Table Background) --- */
+/* --- GAME --- */
 #game {
-    /* The entire screen is now the table */
     background: radial-gradient(circle, var(--felt-center) 20%, var(--felt-edge) 100%);
     border: 15px solid var(--wood);
     box-sizing: border-box;
 }
 
-/* Opponents (Transparent) */
+/* Opponents */
 #opponents-zone {
     height:var(--zone-h); display:flex; align-items:center; justify-content:flex-start; gap:10px;
-    padding:5px 15px;
-    background: transparent; /* See through to table */
+    padding:5px 15px; background:transparent;
     overflow-x:auto; white-space:nowrap; -webkit-overflow-scrolling:touch;
-    -ms-overflow-style: none; scrollbar-width: none;
+
+    /* HIDE SCROLLBARS */
+    -ms-overflow-style: none;  /* IE/Edge */
+    scrollbar-width: none;  /* Firefox */
 }
 #opponents-zone::-webkit-scrollbar { display: none; }
 #opponents-zone::after { content:""; flex:0 0 10px; }
 
-/* Seat Layout */
+/* SEAT LAYOUT (Default: Pile Left, Info Right) */
 .seat {
     text-align:center; min-width:60px; opacity:0.8; transition:0.3s;
+    /* Grid Layout for Windows/Landscape */
     display: inline-grid;
     grid-template-columns: auto 1fr;
-    grid-template-areas: "pile avatar" "pile name" "pile count";
-    align-items: center; justify-items: center; gap: 0 8px;
-    background: rgba(0,0,0,0.2); /* Slight dim for readability */
-    padding: 5px; border-radius: 8px;
+    grid-template-rows: auto auto auto;
+    grid-template-areas:
+        "pile avatar"
+        "pile name"
+        "pile count";
+    align-items: center; justify-items: center;
+    gap: 0 10px;
+    background: rgba(0,0,0,0.2); padding: 5px; border-radius: 8px;
 }
 .seat.active { opacity:1; transform:scale(1.05); filter:drop-shadow(0 0 5px gold); background: rgba(0,0,0,0.4); }
 .bot-avatar { font-size:1.5rem; grid-area: avatar; line-height: 1; }
@@ -61,19 +80,14 @@ button { background:var(--gold); cursor:pointer; color:#222; }
 .seat > div:nth-child(3) { grid-area: count; }
 .seat .card-pile { grid-area: pile; margin: 0; }
 
-/* Center Area */
-#table {
-    flex-grow:1; margin:5px; position:relative; display:flex; justify-content:center; align-items:center; overflow:hidden;
-    /* Removed border/background here since parent has it */
-}
+/* Table */
+#table { flex-grow:1; margin:5px; position:relative; display:flex; justify-content:center; align-items:center; overflow:hidden; }
 #face-up-area { display:flex; gap:5px; flex-wrap:wrap; justify-content:center; padding:10px; max-height:100%; overflow-y:auto; }
 #deck-area { position:absolute; left:20px; top:50%; transform:translateY(-50%); text-align:center; z-index:2; }
 
-/* Player Zone (Transparent) */
+/* Player Zone */
 #player-zone {
-    height:var(--zone-h);
-    background: transparent; /* See through to table */
-    display:grid; grid-template-columns:70px 1fr 70px;
+    height:var(--zone-h); background:transparent; display:grid; grid-template-columns:70px 1fr 70px;
     align-items:center; padding:0 10px; position:relative;
 }
 #hand {
@@ -97,18 +111,8 @@ button { background:var(--gold); cursor:pointer; color:#222; }
 .card.selected { border:3px solid var(--gold); transform:translateY(-20px); z-index:10; box-shadow: 0 0 15px var(--gold); }
 .card-back { background:repeating-linear-gradient(45deg, #2c3e50, #2c3e50 5px, #34495e 5px, #34495e 10px); border:2px solid white; }
 
-/* Pile & Badge Style */
-.card-pile {
-    width:var(--card-w); height:var(--card-h); background:rgba(255,255,255,0.1);
-    border:2px dashed rgba(255,255,255,0.4); border-radius:4px; position:relative;
-    display:flex; align-items:center; justify-content:center; cursor: pointer;
-}
-.pile-count {
-    background:var(--red); color:white; border-radius:50%; width:22px; height:22px;
-    font-size:0.75rem; font-weight:bold; display:flex; align-items:center; justify-content:center;
-    position:absolute; top:-10px; right:-10px; z-index:5; border:2px solid white;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-}
+.card-pile { width:var(--card-w); height:var(--card-h); background:rgba(255,255,255,0.1); border:2px dashed rgba(255,255,255,0.4); border-radius:4px; position:relative; display:flex; align-items:center; justify-content:center; cursor: pointer; }
+.pile-count { background:var(--red); color:white; border-radius:50%; width:22px; height:22px; font-size:0.75rem; font-weight:bold; display:flex; align-items:center; justify-content:center; position:absolute; top:-10px; right:-10px; z-index:5; border:2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3); }
 
 /* --- CONTROLS --- */
 #controls {
@@ -129,17 +133,15 @@ button { background:var(--gold); cursor:pointer; color:#222; }
 .flying-card.card-back { background:repeating-linear-gradient(45deg, #2c3e50, #2c3e50 5px, #34495e 5px, #34495e 10px) !important; }
 #room-code-display { position:absolute; top:10px; right:10px; background:rgba(0,0,0,0.6); border:1px solid var(--gold); color:var(--gold); padding:8px; border-radius:6px; font-size:1rem; font-weight:bold; cursor:pointer; z-index:200; }
 #game-log { display:none; }
-.modal { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); z-index:200; display:flex; justify-content:center; align-items:center; }
+.modal { position:fixed; top:0; left:0; width:100%; height:100dvh; background:rgba(0,0,0,0.9); z-index:200; display:flex; justify-content:center; align-items:center; }
 .modal-content { background:#34495e; padding:20px; border-radius:10px; text-align:center; border:2px solid var(--gold); min-width:300px; max-width: 90%; max-height: 80%; overflow-y: auto; }
-
-/* Fade In Animation */
 .fade-in-slow { animation: fadeIn 2s ease-in forwards; opacity: 0; }
 @keyframes fadeIn { to { opacity: 1; } }
 @keyframes pop { 0%{transform:scale(0)} 100%{transform:scale(1)} }
 
-/* --- FORCE LANDSCAPE OVERLAY --- */
 #rotate-overlay {
-    display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    display: none; position: fixed; top: 0; left: 0;
+    width: 100%; height: 100dvh;
     background: #1a1a1a; z-index: 9999; color: white;
     flex-direction: column; justify-content: center; align-items: center; text-align: center;
 }
@@ -147,34 +149,47 @@ button { background:var(--gold); cursor:pointer; color:#222; }
 
 /* ================= MOBILE ================= */
 @media (max-width: 900px) and (orientation: portrait) {
-    /* Show the rotate message on phones in portrait */
     #rotate-overlay { display: flex; }
+
+    /* Fallback for portrait if overlay fails/testing: Revert to Vertical Stack */
+    .seat {
+        display: inline-flex;
+        flex-direction: column;
+        gap: 0;
+    }
 }
 
 @media (max-height: 500px) and (orientation: landscape) {
-    :root { --card-w:45px; --card-h:65px; --zone-h:100px; } /* Increased Zone Height */
+    :root { --card-w:45px; --card-h:65px; --zone-h:100px; }
     #opponents-zone { height:90px; }
 
-    /* Adjust player zone to move cards up */
-    #player-zone {
-        height:110px; /* Taller container */
-        grid-template-columns:60px 1fr 60px;
-        align-items: flex-start; /* Align items to top, giving space at bottom */
-        padding-top: 10px;
-    }
+    /* Seat is already Grid (Pile Left) by default, just adjust sizing if needed */
+    .seat { min-width: 50px; gap: 5px; }
 
+    #player-zone { height:110px; grid-template-columns:60px 1fr 60px; align-items: flex-start; padding-top: 10px; }
+
+    /* FIX: Card Cutoff in Landscape */
     #hand {
         align-items: center;
-        padding-bottom: 15px; /* Push cards up from bottom edge */
+        padding-top: 25px; /* Added Top Padding for Selected Card Pop-up */
+        padding-bottom: 5px;
         min-height: 100%;
     }
+    .card.selected { transform: translateY(-15px); } /* Slightly less pop */
 
-    .card.selected { transform: translateY(-10px); }
-
-    /* Compact Controls */
-    #controls { bottom: 115px; gap: 5px; max-width: 250px; width: 90%; }
-    .btn-act { padding: 6px 0; font-size: 0.7rem; border-width: 1px; }
+    /* Smaller Buttons for Landscape Mobile */
+    #controls { bottom: 115px; gap: 5px; max-width: 280px; width: 95%; }
+    .btn-act {
+        padding: 6px 0;
+        font-size: 0.75rem;
+        border-width: 1px;
+    }
 
     #deck-area { left:15px; transform:scale(0.8) translateY(-50%); }
     .game-title { font-size:1.5rem; margin:10px; }
+}
+
+@media (max-width: 600px) {
+    /* Smaller Buttons for Portrait Mobile (if used) */
+    .btn-act { padding: 8px 0; font-size: 0.8rem; }
 }
