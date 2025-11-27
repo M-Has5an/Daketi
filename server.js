@@ -3,8 +3,6 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import path from 'path';
 import { fileURLToPath } from 'url';
-// IMPORT LOGIC FROM PUBLIC FOLDER
-import { Game } from './public/game.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -15,6 +13,170 @@ const io = new Server(httpServer);
 
 app.use(express.static(path.join(__dirname, 'public')));
 
+// --- GAME LOGIC ---
+const SUITS = ['♠', '♥', '♣', '♦'];
+const RANKS = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
+const VALUES = {'2':5,'3':5,'4':5,'5':5,'6':5,'7':5,'8':5,'9':5,'10':5,'J':10,'Q':10,'K':10,'A':20};
+
+class Card {
+    constructor(rank, suit) {
+        this.rank = rank; this.suit = suit; this.val = VALUES[rank];
+        this.color = (suit === '♥' || suit === '♦') ? 'red' : 'black';
+        this.id = Math.random().toString(36).substr(2, 9);
+    }
+}
+
+class Player {
+    constructor(id, name, isBot) {
+        this.id = id; this.name = name; this.isBot = isBot;
+        this.hand = []; this.pile = []; this.socketId = null;
+    }
+}
+
+class Game {
+    constructor(config) {
+        this.numPlayers = Number(config.numPlayers) || 2;
+        this.handSize = Number(config.handSize) || 6;
+        this.faceUpSize = Number(config.faceUpSize) || 6;
+        this.deck = []; this.faceUpCards = []; this.players = [];
+        this.currentPlayerIdx = 0; this.turnPhase = 'DRAW';
+    }
+
+    init() {
+        // 1. CREATE 52 CARDS
+        let d = [];
+        for(let s of SUITS) for(let r of RANKS) d.push(new Card(r, s));
+        
+        // 2. SHUFFLE (Fisher-Yates)
+        for (let i = d.length - 1; i > 0; i--) { 
+            const j = Math.floor(Math.random() * (i + 1));
+            [d[i], d[j]] = [d[j], d[i]];
+        }
+        this.deck = d;
+
+        this.players = [];
+        for(let i=0; i<this.numPlayers; i++) this.players.push(new Player(i, `Bot ${i}`, true));
+        for(let i=0; i<this.handSize; i++) this.players.forEach(p => { if(this.deck.length) p.hand.push(this.deck.pop()); });
+        for(let i=0; i<this.faceUpSize; i++) if(this.deck.length) this.faceUpCards.push(this.deck.pop());
+    }
+
+    getPublicState(forPlayerId) {
+        return {
+            deckCount: this.deck.length,
+            faceUpCards: this.faceUpCards,
+            currentPlayerIdx: this.currentPlayerIdx,
+            turnPhase: this.turnPhase,
+            players: this.players.map(p => ({
+                id: p.id, name: p.name, isBot: p.isBot, pile: p.pile, handCount: p.hand.length,
+                hand: (p.id === forPlayerId) ? p.hand : null 
+            }))
+        };
+    }
+    
+    performDraw(pid) {
+        // VALIDATION: Can only draw if it is the DRAW phase
+        if (this.turnPhase !== 'DRAW') return null;
+        
+        const p = this.players[pid];
+        if(this.deck.length === 0) return null;
+        
+        const card = this.deck.pop();
+        p.hand.push(card);
+        this.turnPhase = 'PLAY'; // Immediately switch to PLAY to block further draws
+        return { animDetails: { card } };
+    }
+
+    performDiscard(pid, cardIdx) {
+        if (this.turnPhase !== 'PLAY') return null;
+        const p = this.players[pid];
+        if(!p.hand[cardIdx]) return null;
+        const card = p.hand.splice(cardIdx, 1)[0];
+        this.faceUpCards.push(card);
+        this.endTurn();
+        return { animDetails: { card } };
+    }
+
+    performCapture(pid, cardIdx) {
+        if (this.turnPhase !== 'PLAY') return null;
+        const p = this.players[pid];
+        if(!p.hand[cardIdx]) return null;
+        const card = p.hand[cardIdx];
+        
+        const analysis = this.analyzeMove(pid, cardIdx);
+        if(!analysis.canCapture) return null;
+
+        p.hand.splice(cardIdx, 1);
+        
+        analysis.stealTargets.forEach(t => {
+            const opp = this.players[t.id];
+            const stolen = opp.pile.splice(opp.pile.length - t.cards.length, t.cards.length);
+            p.pile.push(...stolen);
+        });
+
+        if(analysis.tableMatch.length > 0) {
+            const ids = analysis.tableMatch.map(c => c.id);
+            this.faceUpCards = this.faceUpCards.filter(c => !ids.includes(c.id));
+            p.pile.push(...analysis.tableMatch);
+        }
+
+        p.pile.push(card);
+
+        if(this.deck.length > 0) {
+            this.turnPhase = 'DRAW';
+            return { animDetails: { card, analysis, extraTurn: true } };
+        } else {
+            this.endTurn();
+            return { animDetails: { card, analysis, extraTurn: false } };
+        }
+    }
+
+    analyzeMove(pid, cardIdx) {
+        const p = this.players[pid];
+        const card = p.hand[cardIdx];
+        let result = { canCapture: false, stealTargets: [], tableMatch: [], selfMatch: false };
+
+        this.players.forEach(opp => {
+            if(opp.id === pid || opp.pile.length === 0) return;
+            if(opp.pile[opp.pile.length-1].rank === card.rank) {
+                let steal = [];
+                for(let k=opp.pile.length-1; k>=0; k--) {
+                    if(opp.pile[k].rank === card.rank) steal.push(opp.pile[k]); else break;
+                }
+                result.stealTargets.push({ id: opp.id, cards: steal });
+            }
+        });
+
+        const tbl = this.faceUpCards.filter(c => c.rank === card.rank);
+        if(tbl.length > 0) result.tableMatch = tbl;
+        if(p.pile.length > 0 && p.pile[p.pile.length-1].rank === card.rank) result.selfMatch = true;
+
+        if(result.stealTargets.length > 0 || result.tableMatch.length > 0 || result.selfMatch) result.canCapture = true;
+        return result;
+    }
+
+    endTurn() {
+        this.currentPlayerIdx = (this.currentPlayerIdx + 1) % this.players.length;
+        this.turnPhase = (this.deck.length > 0) ? 'DRAW' : 'PLAY';
+    }
+
+    isGameOver() { return this.deck.length === 0 && this.players.every(p => p.hand.length === 0); }
+
+    calculateBotMove(pid) {
+        if(this.turnPhase === 'DRAW') return { type: 'DRAW', ...this.performDraw(pid) };
+        const bot = this.players[pid];
+        let best = { idx: 0, priority: 0 };
+        for(let i=0; i<bot.hand.length; i++) {
+            const an = this.analyzeMove(pid, i);
+            let prio = 1;
+            if(an.canCapture) prio = 5 + an.stealTargets.length + an.tableMatch.length;
+            if(prio > best.priority) best = { idx: i, priority: prio };
+        }
+        if(best.priority > 1) return { type: 'CAPTURE', ...this.performCapture(pid, best.idx) };
+        return { type: 'DISCARD', ...this.performDiscard(pid, 0) };
+    }
+}
+
+// --- SERVER EVENTS ---
 const rooms = {};
 
 io.on('connection', (socket) => {
@@ -24,17 +186,16 @@ io.on('connection', (socket) => {
         try {
             const roomId = Math.random().toString(36).substr(2, 4).toUpperCase();
             socket.join(roomId);
-            const game = new Game(config);
+            const game = new Game(config || {});
             game.init();
-            
-            game.players[0].name = playerName || "Host";
-            game.players[0].socketId = socket.id;
-            game.players[0].isBot = false;
-            
-            rooms[roomId] = game;
-            socket.emit('roomJoined', { roomId, playerId: 0, state: game.getPublicState(0) });
-            console.log(`Room ${roomId} created.`);
-        } catch(e) { console.error(e); }
+            if(game.players[0]) {
+                game.players[0].name = playerName || "Host";
+                game.players[0].socketId = socket.id;
+                game.players[0].isBot = false;
+                rooms[roomId] = game;
+                socket.emit('roomJoined', { roomId, playerId: 0, state: game.getPublicState(0) });
+            }
+        } catch(e) { console.error(e); socket.emit('error', "Server Error"); }
     });
 
     socket.on('joinRoom', ({ roomId, playerName }) => {
@@ -75,7 +236,7 @@ io.on('connection', (socket) => {
                     }
                 }, 1000);
             }
-        } catch(e) { console.error(e); }
+        } catch(e) { console.error("Action Error", e); }
     });
 });
 
@@ -108,6 +269,5 @@ function checkBotTurn(roomId, game) {
     }
 }
 
-// The 'process.env.PORT' is what Render uses. 3000 is just a fallback.
 const PORT = process.env.PORT || 3000;
-httpServer.listen(PORT, () => console.log(`SERVER RUNNING on port ${PORT}`));
+httpServer.listen(PORT, () => console.log(`SERVER RUNNING at http://localhost:${PORT}`));
