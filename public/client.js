@@ -2,6 +2,7 @@ import { analyzeMoveLogic } from './game.js';
 
 const socket = io();
 let myId = -1, room = null, state = null, selIdx = -1;
+let actionPending = false; // Prevent double clicks
 const el = (id) => document.getElementById(id);
 
 const UI = {
@@ -21,6 +22,8 @@ const UI = {
     mkBack() { const d = document.createElement('div'); d.className='card card-back'; return d; },
 
     update() {
+        actionPending = false; // Reset lock on state update
+
         // Deck
         el('d-count').innerText = state.deckCount;
         el('deck-vis').style.opacity = state.deckCount > 0 ? 1 : 0;
@@ -37,7 +40,6 @@ const UI = {
             let pile = `<div class="card-pile empty"></div>`;
             if(p.pile.length > 0) pile = `<div class="card-pile">${this.mkCard(p.pile[p.pile.length-1]).outerHTML}<div class="pile-count">${p.pile.length}</div></div>`;
 
-            // Grid Layout Construction
             opp.innerHTML += `<div class="seat ${act}" id="seat-${p.id}">
                 <div class="bot-avatar">${p.isBot?'🤖':'👤'}</div>
                 <div style="font-size:0.8rem; font-weight:bold; color:${p.isBot?'#ccc':'gold'}">${p.name}</div>
@@ -48,30 +50,24 @@ const UI = {
 
         // Me
         const me = state.players[myId];
-
-        // Update Score & Turn Indicator
         const isMyTurn = state.currentPlayerIdx === myId;
-        el('score-txt').innerText = isMyTurn ? "YOUR TURN" : `Score: ${me.pile.reduce((a,c)=>a+c.val,0)}`;
-        el('score-txt').style.color = isMyTurn ? "#2ecc71" : "gold"; // Green if turn, Gold otherwise
+
+        el('score-txt').innerText = `Score: ${me.pile.reduce((a,c)=>a+c.val,0)}`;
+        el('score-txt').style.color = isMyTurn ? "#2ecc71" : "gold";
         el('score-txt').style.textShadow = isMyTurn ? "0 0 10px #2ecc71" : "none";
 
         const mp = el('my-pile'); mp.innerHTML = '';
         mp.className = me.pile.length > 0 ? 'card-pile' : 'card-pile empty';
-
         if(me.pile.length > 0) {
             mp.appendChild(this.mkCard(me.pile[me.pile.length-1]));
             mp.innerHTML += `<div class="pile-count">${me.pile.length}</div>`;
         }
-
-        // Click Pile to View
-        mp.onclick = () => {
-            if(me.pile.length > 0) UI.showPile(me.pile);
-        };
+        mp.onclick = () => { if(me.pile.length > 0) UI.showPile(me.pile); };
 
         const hd = el('hand'); hd.innerHTML = '';
         if(me.hand) me.hand.forEach((c, i) => {
             hd.appendChild(this.mkCard(c, () => {
-                if(isMyTurn && state.turnPhase==='PLAY') { selIdx = selIdx===i?-1:i; UI.update(); }
+                if(!actionPending && isMyTurn && state.turnPhase==='PLAY') { selIdx = selIdx===i?-1:i; UI.update(); }
             }, i===selIdx));
         });
 
@@ -101,15 +97,11 @@ const UI = {
     showSummary(players) {
         const div = el('summary-details'); div.innerHTML = '';
         players.sort((a,b) => b.pile.reduce((acc,c)=>acc+c.val,0) - a.pile.reduce((acc,c)=>acc+c.val,0));
-
         players.forEach(p => {
             const score = p.pile.reduce((acc,c)=>acc+c.val,0);
             const color = (p.id === myId) ? 'gold' : 'white';
-            div.innerHTML += `<div style="display:flex; justify-content:space-between; margin:5px 0; font-size:1.2rem; color:${color}; border-bottom:1px solid #555; padding-bottom:5px;">
-                <span>${p.name}</span> <span>${score}</span>
-            </div>`;
+            div.innerHTML += `<div style="display:flex; justify-content:space-between; margin:5px 0; font-size:1.2rem; color:${color}; border-bottom:1px solid #555; padding-bottom:5px;"><span>${p.name}</span> <span>${score}</span></div>`;
         });
-
         el('modal-summary').classList.remove('hidden');
         el('modal-summary').style.display = 'flex';
     },
@@ -123,20 +115,16 @@ const UI = {
         if(!sEl || !eEl) return;
         const s = sEl.getBoundingClientRect(), e = eEl.getBoundingClientRect();
         const sz = this.getCardSize();
-
         const f = back ? this.mkBack() : this.mkCard(card);
         f.classList.add('flying-card');
         f.style.width = sz.w + 'px'; f.style.height = sz.h + 'px';
         f.style.left = s.left + s.width/2 - sz.w/2 + 'px';
         f.style.top = s.top + s.height/2 - sz.h/2 + 'px';
-
         document.body.appendChild(f);
         f.offsetHeight;
-
         f.style.left = e.left + e.width/2 - sz.w/2 + 'px';
         f.style.top = e.top + e.height/2 - sz.h/2 + 'px';
         f.style.transform = 'rotate(180deg)';
-
         await new Promise(r => setTimeout(r, 600));
         f.remove();
     },
@@ -146,13 +134,9 @@ const UI = {
 };
 
 window.onload = () => {
-    // Fullscreen Logic
     el('btn-full').onclick = () => {
-        if (!document.fullscreenElement) {
-            document.documentElement.requestFullscreen().catch(e => console.log(e));
-        } else if (document.exitFullscreen) {
-            document.exitFullscreen();
-        }
+        if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(console.log);
+        else if (document.exitFullscreen) document.exitFullscreen();
     };
 
     el('btn-create').onclick = () => {
@@ -160,9 +144,23 @@ window.onload = () => {
         socket.emit('createRoom', { playerName: el('p-name').value||"Host", config: config });
     }
     el('btn-join').onclick = () => socket.emit('joinRoom', { roomId: el('room-in').value.toUpperCase().trim(), playerName: el('p-name').value||"Guest" });
-    el('btn-draw').onclick = () => socket.emit('action', { roomId: room, type: 'DRAW' });
-    el('btn-disc').onclick = () => socket.emit('action', { roomId: room, type: 'DISCARD', payload: { cardIdx: selIdx } });
-    el('btn-cap').onclick = () => socket.emit('action', { roomId: room, type: 'CAPTURE', payload: { cardIdx: selIdx } });
+
+    // CLICK HANDLERS WITH PENDING CHECK
+    el('btn-draw').onclick = () => {
+        if(actionPending) return;
+        actionPending = true;
+        socket.emit('action', { roomId: room, type: 'DRAW' });
+    };
+    el('btn-disc').onclick = () => {
+        if(actionPending) return;
+        actionPending = true;
+        socket.emit('action', { roomId: room, type: 'DISCARD', payload: { cardIdx: selIdx } });
+    };
+    el('btn-cap').onclick = () => {
+        if(actionPending) return;
+        actionPending = true;
+        socket.emit('action', { roomId: room, type: 'CAPTURE', payload: { cardIdx: selIdx } });
+    };
 
     el('close-modal').onclick = () => el('modal-pile').classList.add('hidden');
     el('btn-restart').onclick = () => location.reload();
@@ -182,7 +180,7 @@ socket.on('roomJoined', (d) => {
     UI.update();
 });
 socket.on('stateUpdate', (s) => { state = s; selIdx = -1; UI.update(); });
-socket.on('error', (m) => alert(m));
+socket.on('error', (m) => { alert(m); actionPending = false; });
 socket.on('gameOver', (p) => UI.showSummary(p));
 
 socket.on('animation', async (d) => {
