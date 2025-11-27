@@ -5,6 +5,31 @@ let myId = -1, room = null, state = null, selIdx = -1;
 let actionPending = false;
 const el = (id) => document.getElementById(id);
 
+// --- PERSISTENT USER ID (For Reconnection) ---
+let myUserId = localStorage.getItem('robber_userid');
+if (!myUserId) {
+    myUserId = 'user_' + Math.random().toString(36).substr(2, 9);
+    localStorage.setItem('robber_userid', myUserId);
+}
+
+// --- NAVIGATION GUARD (Prevent Back/Refresh) ---
+function enableNavGuard() {
+    // 1. Browser Refresh/Close Warning
+    window.onbeforeunload = function() {
+        return "Are you sure you want to leave? You will be disconnected.";
+    };
+
+    // 2. Mobile Back Button Guard
+    history.pushState(null, null, location.href);
+    window.onpopstate = function () {
+        history.pushState(null, null, location.href);
+        // Show custom modal instead of leaving
+        if(confirm("Exit Game? You will be disconnected.")) {
+            location.reload(); // Force reload to go back to lobby clean
+        }
+    };
+}
+
 const UI = {
     showPage(id) {
         document.querySelectorAll('section').forEach(s => {
@@ -40,8 +65,11 @@ const UI = {
             let pile = `<div class="card-pile empty"></div>`;
             if(p.pile.length > 0) pile = `<div class="card-pile">${this.mkCard(p.pile[p.pile.length-1]).outerHTML}<div class="pile-count">${p.pile.length}</div></div>`;
 
+            // Show Bot Icon even if human disconnected (reverts to bot)
+            const avatar = p.isBot ? '🤖' : '👤';
+
             opp.innerHTML += `<div class="seat ${act}" id="seat-${p.id}">
-                <div class="bot-avatar">${p.isBot?'🤖':'👤'}</div>
+                <div class="bot-avatar">${avatar}</div>
                 <div style="font-size:0.8rem; font-weight:bold; color:${p.isBot?'#ccc':'gold'}">${p.name}</div>
                 <div style="font-size:0.7rem; color:#ccc">${p.handCount} 🂠</div>
                 ${pile}
@@ -52,9 +80,8 @@ const UI = {
         const me = state.players[myId];
         const isMyTurn = state.currentPlayerIdx === myId;
 
-        // Update Score & Turn Indicator
         el('score-txt').innerText = `Score: ${me.pile.reduce((a,c)=>a+c.val,0)}`;
-        el('score-txt').style.color = isMyTurn ? "#2ecc71" : "gold"; // Green if turn, Gold otherwise
+        el('score-txt').style.color = isMyTurn ? "#2ecc71" : "gold";
         el('score-txt').style.textShadow = isMyTurn ? "0 0 10px #2ecc71" : "none";
 
         const mp = el('my-pile'); mp.innerHTML = '';
@@ -73,7 +100,6 @@ const UI = {
             }, i===selIdx));
         });
 
-        // Buttons
         el('btn-draw').classList.remove('show'); el('btn-cap').classList.remove('show'); el('btn-disc').classList.remove('show');
 
         if(isMyTurn) {
@@ -143,9 +169,13 @@ window.onload = () => {
 
     el('btn-create').onclick = () => {
         const config = { numPlayers: parseInt(el('p-count').value), handSize: parseInt(el('set-hand').value), faceUpSize: parseInt(el('set-faceup').value) };
-        socket.emit('createRoom', { playerName: el('p-name').value||"Host", config: config });
+        // Send User ID for tracking
+        socket.emit('createRoom', { playerName: el('p-name').value||"Host", config: config, userId: myUserId });
     }
-    el('btn-join').onclick = () => socket.emit('joinRoom', { roomId: el('room-in').value.toUpperCase().trim(), playerName: el('p-name').value||"Guest" });
+    el('btn-join').onclick = () => {
+        // Send User ID for tracking
+        socket.emit('joinRoom', { roomId: el('room-in').value.toUpperCase().trim(), playerName: el('p-name').value||"Guest", userId: myUserId });
+    }
 
     el('btn-draw').onclick = () => {
         if(actionPending) return;
@@ -178,12 +208,20 @@ socket.on('roomJoined', (d) => {
     room = d.roomId; myId = d.playerId; state = d.state;
     el('room-code-text').innerText = room;
     document.body.classList.add('in-game-mode');
+
+    // Enable Guard only when game starts
+    enableNavGuard();
+
     UI.showPage('game');
     UI.update();
 });
 socket.on('stateUpdate', (s) => { state = s; selIdx = -1; UI.update(); });
 socket.on('error', (m) => { alert(m); actionPending = false; });
-socket.on('gameOver', (p) => UI.showSummary(p));
+socket.on('gameOver', (p) => {
+    // Remove guard so they can leave freely
+    window.onbeforeunload = null;
+    UI.showSummary(p);
+});
 
 socket.on('animation', async (d) => {
     const { type, playerId, details } = d;
