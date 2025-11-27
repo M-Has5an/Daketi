@@ -97,6 +97,9 @@ button { background:var(--gold); cursor:pointer; color:#222; }
 
 .pile-wrapper, .info { text-align:center; display:flex; flex-direction:column; align-items:center; justify-content:center; }
 
+/* HIDE TURN TEXT globally as requested */
+#turn-txt { display: none; }
+
 /* --- CARDS --- */
 .card {
     width:var(--card-w); height:var(--card-h); background:white; border-radius:4px; color:black;
@@ -168,10 +171,10 @@ button { background:var(--gold); cursor:pointer; color:#222; }
 
     /* HAND CONFIGURATION */
     #hand {
-        align-items: center;
-        padding: 10px;
+        align-items: flex-end; /* Align cards to bottom */
+        padding: 0; /* Removed padding */
         min-height: 100%;
-        gap: 3px; /* Slightly tighter gap on mobile landscape, but still positive */
+        gap: 3px;
     }
 
     .card.selected { transform: translateY(-10px); }
