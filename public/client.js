@@ -36,27 +36,32 @@ const UI = {
             const act = p.id === state.currentPlayerIdx ? 'active' : '';
             let pile = `<div class="card-pile empty"></div>`;
             if(p.pile.length > 0) pile = `<div class="card-pile">${this.mkCard(p.pile[p.pile.length-1]).outerHTML}<div class="pile-count">${p.pile.length}</div></div>`;
-            opp.innerHTML += `<div class="seat ${act}" id="seat-${p.id}"><div class="bot-avatar">${p.isBot?'🤖':'👤'}</div><div>${p.name}</div><div style="font-size:0.7rem; color:#ccc">Cards: ${p.handCount}</div>${pile}</div>`;
+
+            // Updated Grid Layout for Opponent
+            opp.innerHTML += `<div class="seat ${act}" id="seat-${p.id}">
+                <div class="bot-avatar">${p.isBot?'🤖':'👤'}</div>
+                <div style="font-size:0.8rem; font-weight:bold; color:${p.isBot?'#ccc':'gold'}">${p.name}</div>
+                <div style="font-size:0.7rem; color:#ccc">${p.handCount} 🂠</div>
+                ${pile}
+            </div>`;
         });
 
         // Me
         const me = state.players[myId];
-        el('turn-txt').innerText = state.currentPlayerIdx===myId ? "YOUR TURN" : "WAITING...";
-        el('turn-txt').style.color = state.currentPlayerIdx===myId ? "#2ecc71" : "gold";
+
+        // Update Score Only
         el('score-txt').innerText = "Score: " + me.pile.reduce((a,c)=>a+c.val,0);
+        // Add visual highlight to score if my turn
+        el('score-txt').style.color = (state.currentPlayerIdx === myId) ? "#2ecc71" : "gold";
+        el('score-txt').style.textShadow = (state.currentPlayerIdx === myId) ? "0 0 10px #2ecc71" : "none";
 
         const mp = el('my-pile'); mp.innerHTML = '';
         mp.className = me.pile.length > 0 ? 'card-pile' : 'card-pile empty';
-
         if(me.pile.length > 0) {
             mp.appendChild(this.mkCard(me.pile[me.pile.length-1]));
             mp.innerHTML += `<div class="pile-count">${me.pile.length}</div>`;
         }
-
-        // --- CLICK TO VIEW PILE ---
-        mp.onclick = () => {
-            if(me.pile.length > 0) UI.showPile(me.pile);
-        };
+        mp.onclick = () => { if(me.pile.length > 0) UI.showPile(me.pile); };
 
         const hd = el('hand'); hd.innerHTML = '';
         if(me.hand) me.hand.forEach((c, i) => {
@@ -85,6 +90,23 @@ const UI = {
         if(!pile || pile.length===0) grid.innerHTML='<p style="color:#ccc">Empty</p>';
         else pile.forEach(c => grid.appendChild(this.mkCard(c)));
         el('modal-pile').classList.remove('hidden');
+        el('modal-pile').style.display = 'flex';
+    },
+
+    showSummary(players) {
+        const div = el('summary-details'); div.innerHTML = '';
+        players.sort((a,b) => b.pile.reduce((acc,c)=>acc+c.val,0) - a.pile.reduce((acc,c)=>acc+c.val,0));
+
+        players.forEach(p => {
+            const score = p.pile.reduce((acc,c)=>acc+c.val,0);
+            const color = (p.id === myId) ? 'gold' : 'white';
+            div.innerHTML += `<div style="display:flex; justify-content:space-between; margin:5px 0; font-size:1.2rem; color:${color}; border-bottom:1px solid #555; padding-bottom:5px;">
+                <span>${p.name}</span> <span>${score}</span>
+            </div>`;
+        });
+
+        el('modal-summary').classList.remove('hidden');
+        el('modal-summary').style.display = 'flex';
     },
 
     getCardSize() {
@@ -127,7 +149,9 @@ window.onload = () => {
     el('btn-draw').onclick = () => socket.emit('action', { roomId: room, type: 'DRAW' });
     el('btn-disc').onclick = () => socket.emit('action', { roomId: room, type: 'DISCARD', payload: { cardIdx: selIdx } });
     el('btn-cap').onclick = () => socket.emit('action', { roomId: room, type: 'CAPTURE', payload: { cardIdx: selIdx } });
+
     el('close-modal').onclick = () => el('modal-pile').classList.add('hidden');
+    el('btn-restart').onclick = () => location.reload();
 
     el('room-code-display').onclick = function() {
         navigator.clipboard.writeText(room);
@@ -145,10 +169,8 @@ socket.on('roomJoined', (d) => {
 });
 socket.on('stateUpdate', (s) => { state = s; selIdx = -1; UI.update(); });
 socket.on('error', (m) => alert(m));
-socket.on('gameOver', (p) => { 
-    let msg = "GAME OVER!\n"; p.forEach(x => msg += `${x.name}: ${x.pile.reduce((a,c)=>a+c.val,0)}\n`);
-    alert(msg); location.reload();
-});
+socket.on('gameOver', (p) => UI.showSummary(p)); // Use new Summary UI
+
 socket.on('animation', async (d) => {
     const { type, playerId, details } = d;
     const me = (playerId === myId);

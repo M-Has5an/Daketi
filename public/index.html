@@ -9,6 +9,14 @@
 </head>
 <body>
     <div id="app">
+
+        <!-- FORCE LANDSCAPE MSG -->
+        <div id="rotate-overlay">
+            <span>📱🔄</span>
+            <h2>Please Rotate Your Device</h2>
+            <p>This game requires Landscape mode.</p>
+        </div>
+
         <!-- LOBBY -->
         <section id="lobby" class="active-page">
             <div class="box">
@@ -41,7 +49,7 @@
                 <button id="btn-create">CREATE GAME</button>
                 <hr style="border-color:#ffffff33; margin:15px 0;">
                 <input id="room-in" placeholder="ROOM CODE" style="text-transform:uppercase;">
-                <button id="btn-join" style="background:#7f8c8d">JOIN GAME</button>
+                <button id="btn-join">JOIN GAME</button>
             </div>
         </section>
 
@@ -53,22 +61,22 @@
 
             <div id="table">
                 <div id="deck-area">
+                    <!-- Draw Pile with Badge style number -->
                     <div class="card card-back" id="deck-vis"></div>
-                    <div style="margin-top:5px; font-size:0.8rem">DECK: <span id="d-count">0</span></div>
+                    <div class="pile-count" id="d-count" style="top:auto; bottom:-10px; right:-10px;">0</div>
                 </div>
                 <div id="face-up-area"></div>
             </div>
 
             <div id="player-zone">
                 <div class="pile-wrapper">
-                    <div style="font-size:0.7rem; color:#ccc;">PILE</div>
-                    <!-- CLICKABLE PILE -->
+                    <!-- Clickable Pile (No Caption) -->
                     <div id="my-pile" class="card-pile empty"></div>
                 </div>
                 <div id="hand"></div>
                 <div class="info">
-                    <div id="turn-txt" style="font-weight:bold; color:gold;">Your Turn</div>
-                    <div id="score-txt" style="font-size:0.8rem">Score: 0</div>
+                    <!-- ONLY SCORE -->
+                    <div id="score-txt" style="font-size:1rem; font-weight:bold; color:gold;">Score: 0</div>
                 </div>
                 <div id="controls">
                     <button class="btn-act draw" id="btn-draw">DRAW</button>
@@ -86,7 +94,16 @@
         <div class="modal-content">
             <h3 style="color:#f1c40f; margin-top:0;">Your Pile</h3>
             <div id="pile-grid" style="display:flex; flex-wrap:wrap; gap:5px; justify-content:center;"></div>
-            <button id="close-modal" style="margin-top:15px; width:auto; padding:8px 20px; background:#c0392b;">Close</button>
+            <button id="close-modal" style="margin-top:15px; width:auto; padding:8px 20px; background:#c0392b; color:white; border:none; border-radius:5px;">Close</button>
+        </div>
+    </div>
+
+    <!-- GAME SUMMARY MODAL (Fade In) -->
+    <div id="modal-summary" class="hidden fade-in-slow" style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.95); z-index:300; display:flex; align-items:center; justify-content:center;">
+        <div class="modal-content" style="max-width:400px;">
+            <h1 style="color:#f1c40f; font-size:2rem;">GAME OVER</h1>
+            <div id="summary-details" style="text-align:left; margin:20px 0;"></div>
+            <button id="btn-restart" style="width:100%;">PLAY AGAIN</button>
         </div>
     </div>
 
