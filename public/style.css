@@ -86,7 +86,7 @@ button { background:var(--gold); cursor:pointer; color:#222; }
 
 /* Hand */
 #hand {
-    display:flex; gap: 5px; height:100%;
+    display:flex; gap: 5px; height:120%;
     align-items:center; justify-content:center;
     overflow-x:auto; padding:0 10px;
     -ms-overflow-style: none; scrollbar-width: none;
@@ -122,7 +122,7 @@ button { background:var(--gold); cursor:pointer; color:#222; }
 
 /* --- CONTROLS --- */
 #controls {
-    position:absolute; bottom: calc(var(--zone-h) + 10px); left:50%; transform:translateX(-50%);
+    position:absolute; bottom: calc(var(--zone-h) + 30px); left:50%; transform:translateX(-50%);
     display:flex; justify-content:center; align-items:center; gap:15px; pointer-events:none; z-index:100;
     width: 90%; max-width: 400px;
 }
