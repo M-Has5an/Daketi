@@ -1,0 +1,180 @@
+:root {
+    --bg: #1a1a1a;
+    --felt: #27ae60;
+    --wood: #5d4037;
+    --gold: #f1c40f;
+    --red: #e74c3c;
+
+    /* Dynamic Sizes */
+    --card-w: 75px;
+    --card-h: 105px;
+    --zone-h: 140px;
+}
+
+/* --- BASE --- */
+body { margin:0; font-family:'Segoe UI', sans-serif; background:var(--bg); color:white; height:100vh; width:100vw; overflow:hidden; user-select:none; touch-action:manipulation; }
+
+.active-page { opacity:1; z-index:10; transition:0.5s; position:absolute; top:0; width:100%; height:100%; display:flex; flex-direction:column; }
+.hidden-page { opacity:0; pointer-events:none; position:absolute; top:0; width:100%; height:100%; }
+.hidden { display: none !important; }
+
+/* --- LOBBY --- */
+#lobby { align-items:center; justify-content:center; background:linear-gradient(135deg, #2c3e50, #000); overflow-y:auto; }
+.box { background:rgba(255,255,255,0.1); padding:20px; border-radius:10px; width:90%; max-width:350px; text-align:center; margin:auto; }
+input, select, button { width:100%; padding:12px; margin:5px 0; border-radius:5px; border:none; font-weight:bold; box-sizing:border-box; font-size:1rem; }
+button { background:var(--gold); cursor:pointer; color:#222; }
+.title { font-size: clamp(2rem, 5vw, 4rem); color:var(--gold); margin-bottom:20px; }
+
+/* --- GAME --- */
+#game { background:#222; }
+
+/* Opponents */
+#opponents-zone {
+    height:var(--zone-h); display:flex; align-items:center; justify-content:flex-start; gap:10px;
+    padding:5px 15px; background:rgba(0,0,0,0.2);
+    overflow-x:auto; white-space:nowrap; -webkit-overflow-scrolling:touch;
+
+    /* HIDE SCROLLBARS */
+    -ms-overflow-style: none;  /* IE/Edge */
+    scrollbar-width: none;  /* Firefox */
+}
+#opponents-zone::-webkit-scrollbar { display: none; width: 0; height: 0; background: transparent; }
+
+#opponents-zone::after { content:""; flex:0 0 10px; }
+
+/* NEW SEAT LAYOUT (Grid: Pile Left, Info Right) */
+.seat {
+    text-align:center; min-width:60px; opacity:0.7; transition:0.3s;
+    /* Grid Layout for Windows/Landscape */
+    display: inline-grid;
+    grid-template-columns: auto 1fr;
+    grid-template-areas:
+        "pile avatar"
+        "pile name"
+        "pile count";
+    align-items: center;
+    justify-items: center;
+    gap: 0 8px;
+}
+.seat.active { opacity:1; transform:scale(1.05); filter:drop-shadow(0 0 5px gold); }
+.bot-avatar { font-size:1.5rem; grid-area: avatar; line-height: 1; }
+.seat > div:nth-child(2) { grid-area: name; }
+.seat > div:nth-child(3) { grid-area: count; }
+.seat .card-pile { grid-area: pile; margin: 0; }
+
+/* Table */
+#table {
+    flex-grow:1; margin:5px; border:10px solid var(--wood); background:radial-gradient(circle, #27ae60 20%, #145a32 100%);
+    border-radius:20px; position:relative; display:flex; justify-content:center; align-items:center; overflow:hidden;
+}
+#face-up-area { display:flex; gap:5px; flex-wrap:wrap; justify-content:center; padding:10px; max-height:100%; overflow-y:auto; }
+#deck-area { position:absolute; left:10px; top:50%; transform:translateY(-50%); text-align:center; z-index:2; }
+
+/* Player Zone */
+#player-zone {
+    height:var(--zone-h); background:rgba(0,0,0,0.95); display:grid; grid-template-columns:70px 1fr 70px;
+    align-items:center; padding:0 10px; position:relative;
+}
+#hand {
+    display:flex; gap:-5px; height:100%;
+    align-items:center;
+    justify-content:center; overflow-x:auto; padding:0 10px;
+
+    /* Hide Scrollbar for Hand */
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+#hand::-webkit-scrollbar { display: none; }
+
+.pile-wrapper, .info { text-align:center; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+
+/* --- CARDS --- */
+.card {
+    width:var(--card-w); height:var(--card-h); background:white; border-radius:4px; color:black;
+    display:flex; flex-direction:column; justify-content:space-between;
+    padding: 2px 4px;
+    box-sizing:border-box; font-weight:bold; cursor:pointer; box-shadow:0 2px 4px rgba(0,0,0,0.5); flex-shrink:0;
+    font-size: calc(var(--card-w) * 0.35); line-height: 1;
+}
+.card.red { color:var(--red); }
+.card.selected { border:3px solid var(--gold); transform:translateY(-20px); z-index:10; box-shadow: 0 0 15px var(--gold); }
+.card-back { background:repeating-linear-gradient(45deg, #2c3e50, #2c3e50 5px, #34495e 5px, #34495e 10px); border:2px solid white; }
+
+/* Pile Style */
+.card-pile {
+    width:var(--card-w); height:var(--card-h); background:rgba(255,255,255,0.05);
+    border:2px dashed rgba(255,255,255,0.2); border-radius:4px; position:relative;
+    display:flex; align-items:center; justify-content:center; cursor: pointer;
+}
+.pile-count { background:red; color:white; border-radius:50%; width:20px; height:20px; font-size:0.7rem; display:flex; align-items:center; justify-content:center; position:absolute; top:-8px; right:-8px; z-index:5; border:1px solid white; }
+
+/* --- CONTROLS --- */
+#controls {
+    position:absolute; bottom: calc(var(--zone-h) + 10px); left:50%; transform:translateX(-50%);
+    display:flex; justify-content:center; align-items:center;
+    gap:15px; pointer-events:none; z-index:100;
+    width: 90%; max-width: 400px;
+}
+.btn-act {
+    pointer-events:auto; padding:12px 0; border-radius:30px; display:none;
+    border:2px solid white; color:white; box-shadow:0 4px 10px rgba(0,0,0,0.5);
+    font-size:0.9rem; font-weight:bold; text-transform:uppercase;
+    flex: 1; max-width: 160px;
+}
+.btn-act.show { display:block; animation:pop 0.3s; }
+.draw { background:#e67e22; } .cap { background:#27ae60; } .disc { background:#c0392b; }
+
+/* UTILS */
+.flying-card { position:fixed; z-index:9999; transition:all 0.6s ease; pointer-events:none; box-shadow:0 10px 20px rgba(0,0,0,0.5); background:white !important; }
+.flying-card.card-back { background:repeating-linear-gradient(45deg, #2c3e50, #2c3e50 5px, #34495e 5px, #34495e 10px) !important; }
+#room-code-display { position:absolute; top:10px; right:10px; background:rgba(0,0,0,0.8); border:1px solid var(--gold); color:var(--gold); padding:8px; border-radius:6px; font-size:1rem; font-weight:bold; cursor:pointer; z-index:200; }
+#game-log { display:none; }
+.modal { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); z-index:200; display:flex; justify-content:center; align-items:center; }
+.modal-content { background:#34495e; padding:20px; border-radius:10px; text-align:center; border:2px solid var(--gold); min-width:300px; max-width: 90%; max-height: 80%; overflow-y: auto; }
+@keyframes pop { 0%{transform:scale(0)} 100%{transform:scale(1)} }
+
+/* ================= MOBILE ================= */
+@media (max-width: 600px) {
+    :root { --card-w:50px; --card-h:75px; --zone-h:110px; }
+    #game { grid-template-rows:auto 1fr auto; }
+    #player-zone { padding:0 5px; gap:5px; }
+
+    /* Revert Seat to Vertical for Portrait Phones */
+    .seat {
+        min-width:50px;
+        transform:scale(1);
+        display: inline-flex;
+        flex-direction: column;
+        gap: 0;
+    }
+    .seat .card-pile { margin-top: 5px; }
+
+    #room-code-display { top:5px; right:5px; padding:5px; font-size:0.8rem; }
+
+    /* Smaller Controls */
+    #controls { bottom:115px; gap:8px; width: 85%; max-width: 280px; }
+    .btn-act { padding: 8px 0; font-size: 0.75rem; }
+
+    #hand { gap: 2px; }
+}
+
+@media (max-height: 500px) and (orientation: landscape) {
+    :root { --card-w:45px; --card-h:65px; --zone-h:80px; }
+    #opponents-zone { height:85px; }
+    #player-zone { height:90px; grid-template-columns:60px 1fr 60px; }
+
+    /* FIX: Card Cutoff in Landscape - More space at top */
+    #hand {
+        align-items: flex-end;
+        padding-bottom: 5px;
+        padding-top: 15px;
+    }
+    .card.selected { transform: translateY(-10px); } /* Smaller Pop */
+
+    /* Compact Controls */
+    #controls { bottom: 92px; gap: 5px; max-width: 250px; width: 90%; }
+    .btn-act { padding: 5px 0; font-size: 0.7rem; border-width: 1px; }
+
+    #deck-area { left:5px; transform:scale(0.8) translateY(-50%); }
+    .game-title { font-size:1.5rem; margin:10px; }
+}

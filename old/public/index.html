@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Robber Daketi Online</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+    <div id="app">
+        <!-- LOBBY -->
+        <section id="page-landing" class="active-page">
+            <div class="landing-content">
+                <h1 class="game-title">ROBBER DAKETI</h1>
+                <div class="menu-box">
+                    <input type="text" id="input-name" placeholder="Enter Name">
+                    <div class="form-group">
+                        <label>Players</label>
+                        <select id="set-players">
+                            <option value="2">2 Players</option>
+                            <option value="3">3 Players</option>
+                            <option value="4">4 Players</option>
+                            <option value="5">5 Players</option>
+                            <option value="6">6 Players</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="display:flex; gap:10px;">
+                         <div><label>Hand</label><input type="number" id="set-hand" value="6" max="6"></div>
+                         <div><label>Face Up</label><input type="number" id="set-faceup" value="6" max="6"></div>
+                    </div>
+                    <button id="btn-create-room" class="primary-btn">CREATE GAME</button>
+                    <hr style="border-color:rgba(255,255,255,0.1); margin:15px 0;">
+                    <input type="text" id="input-room-code" placeholder="ROOM CODE">
+                    <button id="btn-join-room" class="secondary-btn">JOIN GAME</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- GAME -->
+        <section id="page-game" class="hidden-page">
+            <!-- Room Code Top Right -->
+            <div id="room-code-display" title="Click to Copy">
+                <span id="room-code-text">----</span>
+                <span style="font-size:1.2rem;">📋</span>
+            </div>
+
+            <div id="opponents-zone"></div>
+
+            <div id="poker-table">
+                <div class="table-felt">
+                    <div id="draw-deck-area">
+                        <div id="draw-pile-visual"></div>
+                    </div>
+                    <div id="face-up-area"></div>
+                </div>
+            </div>
+
+            <div id="player-zone">
+                <div class="pile-wrapper">
+                    <div class="label" style="color:#ccc; font-size:0.7rem; margin-bottom:2px;">PILE</div>
+                    <div id="player-pile" class="card-pile"></div>
+                </div>
+                <div id="player-hand"></div>
+                <div class="player-info">
+                    <div id="turn-indicator">Your Turn</div>
+                    <div id="score-display">Score: 0</div>
+                </div>
+                <div id="action-controls">
+                    <button id="act-draw" class="action-btn draw">DRAW</button>
+                    <button id="act-capture" class="action-btn capture">CAPTURE</button>
+                    <button id="act-discard" class="action-btn discard">DISCARD</button>
+                </div>
+            </div>
+            <div id="game-log"></div>
+        </section>
+    </div>
+
+    <script type="module" src="client.js"></script>
+</body>
+</html>

@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Robber Daketi Pro</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+    <div id="app">
+        <!-- LOBBY -->
+        <section id="lobby" class="active-page">
+            <div class="box">
+                <div class="title">DAKETI</div>
+                <input id="p-name" placeholder="Your Name">
+
+                <div style="text-align:left; margin-top:15px;">
+                    <div class="form-group">
+                        <label>Players</label>
+                        <select id="p-count">
+                            <option value="2">2 Players</option>
+                            <option value="3">3 Players</option>
+                            <option value="4">4 Players</option>
+                            <option value="5">5 Players</option>
+                            <option value="6">6 Players</option>
+                        </select>
+                    </div>
+                    <div style="display:flex; gap:10px;">
+                        <div style="flex:1">
+                            <label>Hand Size</label>
+                            <input type="number" id="set-hand" value="6" max="10">
+                        </div>
+                        <div style="flex:1">
+                            <label>Face Up</label>
+                            <input type="number" id="set-faceup" value="6" max="10">
+                        </div>
+                    </div>
+                </div>
+
+                <button id="btn-create">CREATE GAME</button>
+                <hr style="border-color:#ffffff33; margin:15px 0;">
+                <input id="room-in" placeholder="ROOM CODE" style="text-transform:uppercase;">
+                <button id="btn-join" style="background:#7f8c8d">JOIN GAME</button>
+            </div>
+        </section>
+
+        <!-- GAME -->
+        <section id="game" class="hidden-page">
+            <div id="room-code-display" title="Click to Copy"><span id="room-code-text">----</span> 📋</div>
+
+            <div id="opponents-zone"></div>
+
+            <div id="table">
+                <div id="deck-area">
+                    <div class="card card-back" id="deck-vis"></div>
+                    <div style="margin-top:5px; font-size:0.8rem">DECK: <span id="d-count">0</span></div>
+                </div>
+                <div id="face-up-area"></div>
+            </div>
+
+            <div id="player-zone">
+                <div class="pile-wrapper">
+                    <div style="font-size:0.7rem; color:#ccc;">PILE</div>
+                    <!-- CLICKABLE PILE -->
+                    <div id="my-pile" class="card-pile empty"></div>
+                </div>
+                <div id="hand"></div>
+                <div class="info">
+                    <div id="turn-txt" style="font-weight:bold; color:gold;">Your Turn</div>
+                    <div id="score-txt" style="font-size:0.8rem">Score: 0</div>
+                </div>
+                <div id="controls">
+                    <button class="btn-act draw" id="btn-draw">DRAW</button>
+                    <button class="btn-act cap" id="btn-cap">CAPTURE</button>
+                    <button class="btn-act disc" id="btn-disc">DISCARD</button>
+                </div>
+            </div>
+        </section>
+
+        <div id="game-log"></div>
+    </div>
+
+    <!-- MODAL -->
+    <div id="modal-pile" class="hidden" style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); z-index:200; display:flex; align-items:center; justify-content:center;">
+        <div class="modal-content">
+            <h3 style="color:#f1c40f; margin-top:0;">Your Pile</h3>
+            <div id="pile-grid" style="display:flex; flex-wrap:wrap; gap:5px; justify-content:center;"></div>
+            <button id="close-modal" style="margin-top:15px; width:auto; padding:8px 20px; background:#c0392b;">Close</button>
+        </div>
+    </div>
+
+    <script type="module" src="client.js"></script>
+</body>
+</html>

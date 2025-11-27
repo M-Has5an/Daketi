@@ -1,0 +1,320 @@
+:root {
+    --bg-dark: #1a1a1a;
+    --felt-center: #27ae60;
+    --felt-edge: #145a32;
+    --wood: #5d4037;
+    --card-w: 75px;
+    --card-h: 105px;
+    --gold: #f1c40f;
+    --red: #e74c3c;
+    --blue: #2980b9;
+}
+
+body {
+    margin: 0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: var(--bg-dark);
+    color: white;
+    overflow: hidden;
+    height: 100vh;
+    user-select: none;
+}
+
+/* --- PAGE TRANSITIONS --- */
+section {
+    width: 100%; height: 100%;
+    position: absolute; top: 0; left: 0;
+    transition: opacity 0.5s;
+    display: flex; flex-direction: column;
+}
+.hidden-page { opacity: 0; pointer-events: none; z-index: 0; }
+.active-page { opacity: 1; z-index: 10; }
+
+/* --- LANDING --- */
+#page-landing, #page-rules {
+    background: linear-gradient(135deg, #2c3e50, #000);
+    align-items: center; justify-content: center;
+}
+.game-title { font-size: 4rem; color: var(--gold); text-shadow: 0 0 20px rgba(241, 196, 15, 0.5); margin: 0; text-align: center; }
+.subtitle { color: #bdc3c7; letter-spacing: 2px; text-align: center; margin-bottom: 30px; }
+.menu-box, .rules-content {
+    background: rgba(255,255,255,0.1); padding: 30px; border-radius: 10px; width: 350px;
+    backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1);
+}
+.form-group { margin-bottom: 15px; }
+.form-group label { display: block; font-size: 0.9rem; color: #ccc; margin-bottom: 5px; }
+.form-group select, .form-group input { width: 100%; padding: 10px; border-radius: 5px; border: none; font-weight: bold; }
+.button-group { display: flex; gap: 10px; margin-top: 20px; }
+button { flex: 1; padding: 12px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; transition: transform 0.1s; }
+button:hover { transform: scale(1.05); }
+.primary-btn { background: var(--gold); color: #2c3e50; }
+.secondary-btn { background: #7f8c8d; color: white; }
+
+/* --- GAME LAYOUT --- */
+#page-game { background: #222; }
+
+#opponents-zone {
+    height: 140px; display: flex; justify-content: center; align-items: center;
+    gap: 15px; padding-top: 10px; background: rgba(0,0,0,0.2); overflow-x: auto;
+}
+.seat {
+    text-align: center; opacity: 0.7; transition: 0.3s;
+    display: flex; flex-direction: column; align-items: center;
+    min-width: 80px; transform: scale(0.9);
+}
+.seat.active { opacity: 1; transform: scale(1.05); filter: drop-shadow(0 0 10px var(--gold)); }
+.bot-avatar { font-size: 1.8rem; margin-bottom: 2px; }
+
+#poker-table {
+    flex-grow: 1; margin: 10px 40px; border-radius: 200px; border: 15px solid var(--wood);
+    box-shadow: inset 0 0 50px rgba(0,0,0,0.8), 0 10px 30px rgba(0,0,0,0.5);
+    background: radial-gradient(circle, var(--felt-center) 20%, var(--felt-edge) 100%);
+    position: relative; display: flex; justify-content: center; align-items: center;
+}
+#face-up-area { display: flex; gap: 10px; flex-wrap: wrap; max-width: 700px; justify-content: center; padding: 20px; }
+#draw-deck-area { position: absolute; left: 40px; top: 50%; transform: translateY(-50%); text-align: center; }
+#draw-pile-visual {
+    width: var(--card-w); height: var(--card-h);
+    background: repeating-linear-gradient(45deg, #c0392b, #c0392b 10px, #922b21 10px, #922b21 20px);
+    border: 2px solid #ecf0f1; border-radius: 6px;
+    box-shadow: 1px 1px 0 #555, 2px 2px 0 #555, 3px 3px 0 #555, 4px 4px 0 #555, 5px 5px 15px rgba(0,0,0,0.6);
+    cursor: pointer;
+}
+.deck-label { margin-top: 8px; font-weight: bold; font-size: 0.8rem; text-shadow: 0 1px 2px black; }
+
+#player-zone {
+    height: 220px; width: 100%; background: rgba(0,0,0,0.85); border-top: 1px solid rgba(255,255,255,0.1);
+    display: flex; flex-direction: row; justify-content: center; align-items: center; gap: 50px;
+    position: relative; padding: 0 20px; box-sizing: border-box;
+}
+.pile-wrapper { display: flex; flex-direction: column; align-items: center; width: 100px; }
+.label { font-size: 0.7rem; color: #bdc3c7; margin-bottom: 5px; letter-spacing: 1px; }
+.card-pile {
+    width: var(--card-w); height: var(--card-h); background: rgba(255,255,255,0.05);
+    border: 2px dashed rgba(255,255,255,0.2); border-radius: 6px;
+    display: flex; align-items: center; justify-content: center; position: relative;
+}
+.card-pile.empty::after { content: 'Empty'; color: rgba(255,255,255,0.3); font-size: 0.8rem; }
+.inspect-btn { padding: 4px 10px; font-size: 0.75rem; margin-top: 5px; background: #34495e; color: white; border-radius: 10px; }
+
+#player-hand { display: flex; justify-content: center; align-items: center; gap: 8px; height: 140px; padding: 0 20px; }
+.player-info { width: 120px; text-align: center; display: flex; flex-direction: column; gap: 5px; }
+#turn-indicator { font-size: 1.1rem; font-weight: bold; color: var(--gold); }
+#score-display { font-size: 0.9rem; opacity: 0.8; }
+
+#action-controls {
+    position: absolute; bottom: 170px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 15px; z-index: 100; pointer-events: none;
+}
+.action-btn {
+    pointer-events: auto; padding: 10px 24px; border-radius: 25px; font-size: 0.9rem;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.5); display: none; text-transform: uppercase; border: 2px solid rgba(255,255,255,0.2);
+}
+.action-btn.visible { display: block; animation: popIn 0.3s ease-out; }
+.action-btn.draw { background: #e67e22; }
+.action-btn.capture { background: #27ae60; }
+.action-btn.discard { background: #c0392b; }
+
+/* --- CARD STYLES --- */
+.card {
+    width: var(--card-w); height: var(--card-h); background: white; border-radius: 6px;
+    display: flex; flex-direction: column; justify-content: space-between; padding: 5px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.4); font-weight: bold; cursor: pointer; box-sizing: border-box;
+    transition: transform 0.2s, box-shadow 0.2s; flex-shrink: 0;
+}
+.card.red { color: #c0392b; }
+.card.black { color: #2c3e50; }
+.card:hover { transform: translateY(-15px); z-index: 5; }
+.card.selected { transform: translateY(-20px); border: 3px solid var(--gold); box-shadow: 0 0 15px var(--gold); z-index: 10; }
+
+.pile-count {
+    position: absolute; top: -8px; right: -8px; background: var(--red); color: white;
+    border-radius: 50%; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
+    font-size: 0.75rem; z-index: 20; box-shadow: 0 2px 4px rgba(0,0,0,0.3); border: 1px solid white;
+}
+
+/* --- ANIMATIONS & CARD BACK --- */
+.card-back {
+    background: repeating-linear-gradient(45deg, #2c3e50, #2c3e50 10px, #34495e 10px, #34495e 20px);
+    border: 2px solid white;
+}
+
+.flying-card {
+    position: fixed;
+    z-index: 9999;
+    pointer-events: none;
+    transition: all 0.6s cubic-bezier(0.25, 1, 0.5, 1);
+    box-shadow: 0 10px 20px rgba(0,0,0,0.6);
+    background-color: white !important; /* Ensure opacity */
+}
+/* Ensure flying card back also stays opaque */
+.flying-card.card-back {
+    background: repeating-linear-gradient(45deg, #2c3e50, #2c3e50 10px, #34495e 10px, #34495e 20px) !important;
+}
+
+/* --- LOG & MODALS --- */
+#game-log {
+    position: absolute; top: 15px; left: 15px; width: 260px; max-height: 150px; overflow-y: hidden;
+    background: rgba(0,0,0,0.6); color: #ecf0f1; border-radius: 6px; font-family: monospace; font-size: 0.8rem;
+    padding: 10px; pointer-events: none; display: flex; flex-direction: column-reverse; border-left: 3px solid var(--gold);
+}
+.modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 200; display: flex; justify-content: center; align-items: center; }
+.modal.hidden { display: none; }
+.modal-content { background: #34495e; padding: 25px; border-radius: 10px; text-align: center; border: 2px solid var(--gold); min-width: 300px; }
+.modal-content.wide { min-width: 500px; }
+#pile-grid { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; max-height: 300px; overflow-y: auto; margin: 15px 0; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 5px; }
+
+.fade-in-slow { animation: fadeSlow 1.5s ease-in forwards; }
+@keyframes fadeSlow { from { opacity: 0; } to { opacity: 1; } }
+@keyframes popIn { 0% { transform: scale(0); opacity: 0; } 80% { transform: scale(1.1); } 100% { transform: scale(1); opacity: 1; } }
+/* ... existing code ... */
+
+/* --- UI IMPROVEMENTS --- */
+
+#input-name {
+    font-size: 1.5rem;       /* Much larger text */
+    padding: 15px 20px;      /* More comfortable spacing */
+    width: 90%;              /* Take up most of the container */
+    max-width: 400px;        /* Don't get too wide on desktops */
+    border: 2px solid var(--gold); /* Gold border to look nice */
+    background: rgba(255, 255, 255, 0.9);
+    color: #2c3e50;
+    border-radius: 8px;
+    text-align: center;
+    margin-bottom: 25px !important; /* Force space below it */
+    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    outline: none;
+    transition: transform 0.2s;
+}
+
+#input-name:focus {
+    transform: scale(1.05); /* Slight pop when you click to type */
+    border-color: #fff;
+}
+
+/* Make the Room Code Input bigger too while we are at it */
+#input-room-code {
+    font-size: 1.2rem;
+    padding: 12px;
+    text-transform: uppercase; /* Auto-capitalize code */
+    letter-spacing: 3px;
+    text-align: center;
+    font-weight: bold;
+    border: 2px solid rgba(255,255,255,0.3);
+    background: rgba(0,0,0,0.3);
+    color: var(--gold);
+}
+```
+
+### Visual Check: Playing with Bots vs. Humans
+
+To confirm who is a bot and who is a human while playing:
+
+1.  **Humans:** When a human joins, you will see their **Name** (e.g., "Rahul") in the seat.
+2.  **Bots:** Bots will usually be named "Player 2", "Player 3", etc. (or "Bot 2" depending on your `game.js` init).
+3.  **Bot Icon:** In your `ui.js`, the code renders a robot emoji `🤖` for opponents. You can make this smarter.
+
+**Optional Update to `ui.js`** to visually distinguish Humans from Bots:
+
+In `src/ui.js`, look for the `updateGameState` function where it renders opponents. Update the `seat.innerHTML` part:
+
+```javascript
+// Inside src/ui.js -> updateGameState loop
+
+const isBot = p.isBot; // This info comes from server state
+const avatar = isBot ? '🤖' : '👤'; // Robot for bots, Person silhouette for humans
+const nameColor = isBot ? '#ccc' : '#f1c40f'; // Grey for bots, Gold for humans
+
+const seat = document.createElement('div');
+seat.className = `seat ${isActive ? 'active' : ''}`;
+seat.innerHTML = `
+    <div class="bot-avatar">${avatar}</div>
+    <div style="font-size:0.8rem; color:${nameColor}; font-weight:bold;">
+        ${p.name}
+    </div>
+    <div style="font-size:0.7rem; color:#ccc">Hand: ${p.handCount}</div>
+    ${pileHtml}
+`;
+padding: 10px; pointer-events: none; display: flex; flex-direction: column-reverse; border-left: 3px solid var(--gold);
+}
+
+/* --- UI IMPROVEMENTS --- */
+
+/* Allow copying text in specific areas */
+#room-code-display, #input-room-code, #input-name {
+    user-select: text !important;
+    cursor: text;
+}
+
+#room-code-display {
+    cursor: pointer; /* Hint that it is clickable */
+    transition: transform 0.1s;
+}
+#room-code-display:active {
+    transform: scale(0.95);
+}
+
+#input-name {
+    font-size: 1.5rem;       /* Much larger text */
+    padding: 15px 20px;      /* More comfortable spacing */
+    width: 90%;              /* Take up most of the container */
+    max-width: 400px;        /* Don't get too wide on desktops */
+    border: 2px solid var(--gold); /* Gold border to look nice */
+    background: rgba(255, 255, 255, 0.9);
+    color: #2c3e50;
+    border-radius: 8px;
+    text-align: center;
+    margin-bottom: 25px !important; /* Force space below it */
+    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    outline: none;
+    transition: transform 0.2s;
+}
+
+#input-name:focus {
+    transform: scale(1.05); /* Slight pop when you click to type */
+    border-color: #fff;
+}
+
+/* Make the Room Code Input bigger too while we are at it */
+#input-room-code {
+    font-size: 1.2rem;
+    padding: 12px;
+    text-transform: uppercase; /* Auto-capitalize code */
+    letter-spacing: 3px;
+    text-align: center;
+    font-weight: bold;
+    border: 2px solid rgba(255,255,255,0.3);
+    background: rgba(0,0,0,0.3);
+    color: var(--gold);
+}
+```
+
+### Visual Check: Playing with Bots vs. Humans
+
+To confirm who is a bot and who is a human while playing:
+
+1.  **Humans:** When a human joins, you will see their **Name** (e.g., "Rahul") in the seat.
+2.  **Bots:** Bots will usually be named "Player 2", "Player 3", etc. (or "Bot 2" depending on your `game.js` init).
+3.  **Bot Icon:** In your `ui.js`, the code renders a robot emoji `🤖` for opponents. You can make this smarter.
+
+**Optional Update to `ui.js`** to visually distinguish Humans from Bots:
+
+In `src/ui.js`, look for the `updateGameState` function where it renders opponents. Update the `seat.innerHTML` part:
+
+```javascript
+// Inside src/ui.js -> updateGameState loop
+
+const isBot = p.isBot; // This info comes from server state
+const avatar = isBot ? '🤖' : '👤'; // Robot for bots, Person silhouette for humans
+const nameColor = isBot ? '#ccc' : '#f1c40f'; // Grey for bots, Gold for humans
+
+const seat = document.createElement('div');
+seat.className = `seat ${isActive ? 'active' : ''}`;
+seat.innerHTML = `
+    <div class="bot-avatar">${avatar}</div>
+    <div style="font-size:0.8rem; color:${nameColor}; font-weight:bold;">
+        ${p.name}
+    </div>
+    <div style="font-size:0.7rem; color:#ccc">Hand: ${p.handCount}</div>
+    ${pileHtml}
+`;
