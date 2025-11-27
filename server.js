@@ -1,211 +1,62 @@
-const express = require('express');
-const http = require('http');
-const { Server } = require("socket.io");
-const path = require('path');
+import express from 'express';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
+import path from 'path';
+import { fileURLToPath } from 'url';
+// Import the shared game logic
+import { Game } from './public/game.js';
+
+// Fix for __dirname in ES Modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
-const server = http.createServer(app);
-const io = new Server(server, {
-    pingTimeout: 60000, // Wait 60s before disconnecting (Stability fix)
+const httpServer = createServer(app);
+
+// Stability: Increase ping timeout to prevent random disconnects
+const io = new Server(httpServer, {
+    pingTimeout: 60000,
     pingInterval: 25000
 });
 
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
-});
-
+// Serve the public folder
 app.use(express.static(path.join(__dirname, 'public')));
 
-// --- GAME LOGIC ---
-const SUITS = ['♠', '♥', '♣', '♦'];
-const RANKS = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
-const VALUES = {'2':5,'3':5,'4':5,'5':5,'6':5,'7':5,'8':5,'9':5,'10':5,'J':10,'Q':10,'K':10,'A':20};
-
-class Card {
-    constructor(rank, suit) {
-        this.rank = rank; this.suit = suit; this.val = VALUES[rank];
-        this.color = (suit === '♥' || suit === '♦') ? 'red' : 'black';
-        this.id = Math.random().toString(36).substr(2, 9);
-    }
-}
-
-class Player {
-    constructor(id, name, isBot) {
-        this.id = id; this.name = name; this.isBot = isBot;
-        this.hand = []; this.pile = [];
-        this.socketId = null;
-        this.userId = null;
-    }
-}
-
-class Game {
-    constructor(config) {
-        this.numPlayers = Number(config.numPlayers) || 2;
-        this.handSize = Number(config.handSize) || 6;
-        this.faceUpSize = Number(config.faceUpSize) || 6;
-        this.deck = []; this.faceUpCards = []; this.players = [];
-        this.currentPlayerIdx = 0; this.turnPhase = 'DRAW';
-    }
-
-    init() {
-        let d = [];
-        for(let s of SUITS) for(let r of RANKS) d.push(new Card(r, s));
-        for (let i = d.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [d[i], d[j]] = [d[j], d[i]];
-        }
-        this.deck = d;
-        this.players = [];
-        for(let i=0; i<this.numPlayers; i++) {
-            this.players.push(new Player(i, `Bot ${i}`, true));
-        }
-        for(let i=0; i<this.handSize; i++) this.players.forEach(p => { if(this.deck.length) p.hand.push(this.deck.pop()); });
-        for(let i=0; i<this.faceUpSize; i++) if(this.deck.length) this.faceUpCards.push(this.deck.pop());
-    }
-
-    getPublicState(forPlayerId) {
-        return {
-            deckCount: this.deck.length,
-            faceUpCards: this.faceUpCards,
-            currentPlayerIdx: this.currentPlayerIdx,
-            turnPhase: this.turnPhase,
-            players: this.players.map(p => ({
-                id: p.id, name: p.name, isBot: p.isBot, pile: p.pile, handCount: p.hand.length,
-                hand: (p.id === forPlayerId) ? p.hand : null
-            }))
-        };
-    }
-
-    performDraw(pid) {
-        // FIX: Prevent double draws
-        if (this.turnPhase !== 'DRAW') return null;
-
-        const p = this.players[pid];
-        if(this.deck.length === 0) return null;
-
-        const card = this.deck.pop();
-        p.hand.push(card);
-        this.turnPhase = 'PLAY';
-        return { animDetails: { card } };
-    }
-
-    performDiscard(pid, cardIdx) {
-        if (this.turnPhase !== 'PLAY') return null;
-        const p = this.players[pid];
-        if(!p.hand[cardIdx]) return null;
-        const card = p.hand.splice(cardIdx, 1)[0];
-        this.faceUpCards.push(card);
-        this.endTurn();
-        return { animDetails: { card } };
-    }
-
-    performCapture(pid, cardIdx) {
-        if (this.turnPhase !== 'PLAY') return null;
-        const p = this.players[pid];
-        if(!p.hand[cardIdx]) return null;
-        const card = p.hand[cardIdx];
-
-        const analysis = this.analyzeMove(pid, cardIdx);
-        if(!analysis.canCapture) return null;
-
-        p.hand.splice(cardIdx, 1);
-
-        analysis.stealTargets.forEach(t => {
-            const opp = this.players[t.id];
-            const stolen = opp.pile.splice(opp.pile.length - t.cards.length, t.cards.length);
-            p.pile.push(...stolen);
-        });
-
-        if(analysis.tableMatch.length > 0) {
-            const ids = analysis.tableMatch.map(c => c.id);
-            this.faceUpCards = this.faceUpCards.filter(c => !ids.includes(c.id));
-            p.pile.push(...analysis.tableMatch);
-        }
-
-        p.pile.push(card);
-
-        if(this.deck.length > 0) {
-            this.turnPhase = 'DRAW';
-            return { animDetails: { card, analysis, extraTurn: true } };
-        } else {
-            this.endTurn();
-            return { animDetails: { card, analysis, extraTurn: false } };
-        }
-    }
-
-    endTurn() {
-        this.currentPlayerIdx = (this.currentPlayerIdx + 1) % this.players.length;
-        this.turnPhase = (this.deck.length > 0) ? 'DRAW' : 'PLAY';
-    }
-
-    isGameOver() { return this.deck.length === 0 && this.players.every(p => p.hand.length === 0); }
-
-    analyzeMove(pid, cardIdx) {
-        const p = this.players[pid];
-        const card = p.hand[cardIdx];
-        let result = { canCapture: false, stealTargets: [], tableMatch: [], selfMatch: false };
-
-        this.players.forEach(opp => {
-            if(opp.id === pid || opp.pile.length === 0) return;
-            if(opp.pile[opp.pile.length-1].rank === card.rank) {
-                let steal = [];
-                for(let k=opp.pile.length-1; k>=0; k--) {
-                    if(opp.pile[k].rank === card.rank) steal.push(opp.pile[k]); else break;
-                }
-                result.stealTargets.push({ id: opp.id, cards: steal });
-            }
-        });
-
-        const tbl = this.faceUpCards.filter(c => c.rank === card.rank);
-        if(tbl.length > 0) result.tableMatch = tbl;
-        if(p.pile.length > 0 && p.pile[p.pile.length-1].rank === card.rank) result.selfMatch = true;
-
-        if(result.stealTargets.length > 0 || result.tableMatch.length > 0 || result.selfMatch) result.canCapture = true;
-        return result;
-    }
-
-    calculateBotMove(pid) {
-        if(this.turnPhase === 'DRAW') return { type: 'DRAW', ...this.performDraw(pid) };
-
-        const bot = this.players[pid];
-        let best = { idx: 0, priority: 0 };
-
-        for(let i=0; i<bot.hand.length; i++) {
-            const an = this.analyzeMove(pid, i);
-            let prio = 1;
-            if(an.canCapture) prio = 5 + an.stealTargets.length + an.tableMatch.length;
-            if(prio > best.priority) best = { idx: i, priority: prio };
-        }
-        if(best.priority > 1) return { type: 'CAPTURE', ...this.performCapture(pid, best.idx) };
-        return { type: 'DISCARD', ...this.performDiscard(pid, 0) };
-    }
-}
-
-// --- EVENTS ---
 const rooms = {};
 
 io.on('connection', (socket) => {
     console.log(`[NET] Connected: ${socket.id}`);
 
+    // CREATE ROOM
     socket.on('createRoom', ({ playerName, config, userId }) => {
         try {
             const roomId = Math.random().toString(36).substr(2, 4).toUpperCase();
             socket.join(roomId);
+
+            // Initialize Game using Shared Logic
             const game = new Game(config || {});
             game.init();
 
-            game.players[0].name = playerName || "Host";
-            game.players[0].socketId = socket.id;
-            game.players[0].userId = userId;
-            game.players[0].isBot = false;
+            // Host setup
+            if (game.players[0]) {
+                game.players[0].name = playerName || "Host";
+                game.players[0].socketId = socket.id;
+                game.players[0].userId = userId;
+                game.players[0].isBot = false;
 
-            rooms[roomId] = game;
-            socket.roomId = roomId;
+                rooms[roomId] = game;
+                socket.roomId = roomId;
 
-            socket.emit('roomJoined', { roomId, playerId: 0, state: game.getPublicState(0) });
-        } catch(e) { console.error(e); socket.emit('error', "Server Error"); }
+                socket.emit('roomJoined', { roomId, playerId: 0, state: game.getPublicState(0) });
+                console.log(`Room ${roomId} created by ${playerName}`);
+            }
+        } catch(e) {
+            console.error(e);
+            socket.emit('error', "Server Error creating room");
+        }
     });
 
+    // JOIN ROOM
     socket.on('joinRoom', ({ roomId, playerName, userId }) => {
         const game = rooms[roomId];
         if (!game) { socket.emit('error', 'Room Not Found'); return; }
@@ -213,6 +64,7 @@ io.on('connection', (socket) => {
         // 1. Reconnect
         const existing = game.players.find(p => p.userId === userId);
         if (existing) {
+            console.log(`[RECONNECT] ${playerName} -> ${roomId}`);
             socket.join(roomId);
             socket.roomId = roomId;
             existing.socketId = socket.id;
@@ -222,8 +74,8 @@ io.on('connection', (socket) => {
             return;
         }
 
-        // 2. Join as New
-        const emptySlot = game.players.find(p => p.isBot); // Take ANY bot slot
+        // 2. New Joiner
+        const emptySlot = game.players.find(p => p.isBot);
         if (emptySlot) {
             socket.join(roomId);
             socket.roomId = roomId;
@@ -232,6 +84,7 @@ io.on('connection', (socket) => {
             emptySlot.userId = userId;
             emptySlot.isBot = false;
 
+            console.log(`[JOIN] ${playerName} joined ${roomId}`);
             broadcastState(roomId, game);
             socket.emit('roomJoined', { roomId, playerId: emptySlot.id, state: game.getPublicState(emptySlot.id) });
         } else {
@@ -239,6 +92,7 @@ io.on('connection', (socket) => {
         }
     });
 
+    // ACTIONS
     socket.on('action', ({ roomId, type, payload }) => {
         const game = rooms[roomId];
         if (!game) return;
@@ -264,12 +118,13 @@ io.on('connection', (socket) => {
         } catch(e) { console.error(e); }
     });
 
+    // DISCONNECT
     socket.on('disconnect', () => {
         if(socket.roomId && rooms[socket.roomId]) {
             const game = rooms[socket.roomId];
             const player = game.players.find(p => p.socketId === socket.id);
             if(player) {
-                console.log(`[DISCONNECT] ${player.name} became Bot`);
+                console.log(`[DISCONNECT] ${player.name} (Bot Mode)`);
                 player.socketId = null;
                 player.isBot = true;
                 broadcastState(socket.roomId, game);
@@ -310,5 +165,6 @@ function checkBotTurn(roomId, game) {
     }
 }
 
+// Use dynamic port for hosting
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`SERVER RUNNING on port ${PORT}`));
+httpServer.listen(PORT, () => console.log(`SERVER RUNNING at http://localhost:${PORT}`));
