@@ -106,7 +106,15 @@ button { background:var(--gold); cursor:pointer; color:#222; }
     font-size: calc(var(--card-w) * 0.35); line-height: 1;
 }
 .card.red { color:var(--red); }
-.card.selected { border:3px solid var(--gold); transform:translateY(-20px); z-index:10; box-shadow: 0 0 15px var(--gold); }
+
+/* FIX: Use box-shadow instead of border to preserve rounded corners */
+.card.selected {
+    transform:translateY(-20px);
+    z-index:10;
+    /* 3px solid gold ring + 15px glow */
+    box-shadow: 0 0 0 3px var(--gold), 0 0 15px var(--gold);
+}
+
 .card-back { background:repeating-linear-gradient(45deg, #2c3e50, #2c3e50 5px, #34495e 5px, #34495e 10px); border:2px solid white; }
 
 .card-pile { width:var(--card-w); height:var(--card-h); background:rgba(255,255,255,0.1); border:2px dashed rgba(255,255,255,0.4); border-radius:4px; position:relative; display:flex; align-items:center; justify-content:center; cursor: pointer; }
@@ -152,45 +160,36 @@ button { background:var(--gold); cursor:pointer; color:#222; }
 
 @media (max-height: 500px) and (orientation: landscape) {
     :root { --card-w:45px; --card-h:65px; --zone-h:100px; }
+
     #opponents-zone { height:90px; }
     .seat { min-width: 50px; gap: 5px; }
 
     #player-zone {
         height:110px; grid-template-columns:60px 1fr 60px;
-        align-items: flex-end; /* Bottom align wrappers */
-        padding-bottom: 10px;
-        padding-top: 0;
+        align-items: flex-end; padding-bottom: 10px; padding-top: 0;
     }
 
     #hand {
-        align-items: flex-end; /* Cards flush with bottom */
-        padding: 0; /* Remove padding so they hit the bottom edge of the container */
+        align-items: flex-end;
+        padding: 0;
         min-height: 100%;
         gap: 3px;
     }
 
+    /* Also fix selection in landscape */
     .card.selected { transform: translateY(-10px); }
 
-    /* Fullscreen Button Bottom Right */
     #btn-full { top: auto; left: auto; bottom: 10px; right: 10px; }
-
-    /* INFO: Above Button */
     .info { justify-content: flex-end; margin-bottom: 40px; }
     .pile-wrapper { justify-content: flex-end; }
 
     #controls { bottom: 95px; gap: 5px; max-width: 280px; width: 95%; }
     .btn-act { padding: 6px 0; font-size: 0.75rem; border-width: 1px; }
 
-    /* DECK: REMOVED SCALE TRANSFORM so it matches face-up size */
-    #deck-area {
-        left:15px;
-        transform: translateY(-50%); /* Only center Y, don't scale down */
-    }
-
+    #deck-area { left:15px; transform: translateY(-50%); }
     .game-title { font-size:1.5rem; margin:10px; }
 }
 
 @media (max-width: 600px) {
-    /* For small portrait fallback if needed */
     .btn-act { padding: 8px 0; font-size: 0.8rem; }
 }
