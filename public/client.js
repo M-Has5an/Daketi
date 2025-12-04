@@ -205,7 +205,6 @@ socket.on('animation', async (d) => {
         await Promise.all(p);
     }
 });
-
 // --- CHEAT VISUAL UPDATE ---
 socket.on('cheatStatus', (status) => {
     cheatActive = status; // Store local state
