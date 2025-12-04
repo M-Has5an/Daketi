@@ -32,9 +32,9 @@ class Card {
 class Player {
     constructor(id, name, isBot) {
         this.id = id; this.name = name; this.isBot = isBot;
-        this.hand = []; this.pile = []; 
+        this.hand = []; this.pile = [];
         this.socketId = null; this.userId = null;
-        this.isCheater = false; // Hidden switch
+        this.isCheater = false;
     }
 }
 
@@ -50,7 +50,7 @@ class Game {
     init() {
         let d = [];
         for(let s of SUITS) for(let r of RANKS) d.push(new Card(r, s));
-        for (let i = d.length - 1; i > 0; i--) { 
+        for (let i = d.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
             [d[i], d[j]] = [d[j], d[i]];
         }
@@ -69,11 +69,11 @@ class Game {
             turnPhase: this.turnPhase,
             players: this.players.map(p => ({
                 id: p.id, name: p.name, isBot: p.isBot, pile: p.pile, handCount: p.hand.length,
-                hand: (p.id === forPlayerId) ? p.hand : null 
+                hand: (p.id === forPlayerId) ? p.hand : null
             }))
         };
     }
-    
+
     // --- RIGGED DRAW LOGIC ---
     performDraw(pid) {
         if (this.turnPhase !== 'DRAW') return null;
@@ -82,17 +82,15 @@ class Game {
         const player = this.players[pid];
         let card;
 
-        // 1. CHEAT MODE: Giving cards to the Cheater (Maximize Benefit)
+        // Priority: Cheat for Cheater -> Sabotage for Opponent -> Random
         if (player.isCheater) {
             card = this.findBestCard(pid);
-        } 
-        // 2. SABOTAGE MODE: Giving cards to Opponents (Minimize Cheater's Loss)
+            console.log(`[CHEAT] Giving ${player.name} best card: ${card.rank}${card.suit}`);
+        }
         else if (this.hasCheaterInRoom()) {
-            // Only rig if there is a cheater to protect
-            const cheaterId = this.players.find(p => p.isCheater).id;
-            card = this.findSabotageCard(pid, cheaterId);
-        } 
-        // 3. NORMAL MODE
+            const cheater = this.players.find(p => p.isCheater);
+            card = this.findSabotageCard(pid, cheater.id);
+        }
         else {
             card = this.deck.pop();
         }
@@ -102,109 +100,11 @@ class Game {
         return { animDetails: { card } };
     }
 
-    // Find the perfect card for the cheater
-    findBestCard(pid) {
-        let bestIndex = this.deck.length - 1;
-        let maxScore = -Infinity;
-
-        this.deck.forEach((c, index) => {
-            // Base score: Value of card (prefer Aces/Faces)
-            let score = c.val; 
-
-            // Check Matches using game logic
-            const analysis = this.analyzeMoveLogic(pid, c);
-
-            // Priority 1: STEAL (Massive points + Deny opponent)
-            if (analysis.stealTargets.length > 0) {
-                // Calculate points gained from steal
-                let stealPoints = 0;
-                analysis.stealTargets.forEach(t => {
-                    const victim = this.players[t.id];
-                    // Heuristic: Stealing a big pile is better
-                    stealPoints += (victim.pile.length * 5); 
-                });
-                score += 1000 + stealPoints;
-            }
-
-            // Priority 2: SELF BUILD (Defense - Lock 4th card)
-            if (analysis.selfMatch) {
-                // If I have 3 cards of this rank, getting the 4th makes me invincible
-                // Simple heuristic: Building is good.
-                score += 300;
-            }
-
-            // Priority 3: TABLE CAPTURE
-            if (analysis.tableMatch.length > 0) {
-                score += 200 + (analysis.tableMatch.length * 10);
-            }
-
-            if (score > maxScore) {
-                maxScore = score;
-                bestIndex = index;
-            }
-        });
-
-        // Swap best card to top and pop
-        const bestCard = this.deck.splice(bestIndex, 1)[0];
-        return bestCard;
-    }
-
-    // Find the worst card for the opponent (Protect the Cheater)
-    findSabotageCard(opponentId, cheaterId) {
-        let bestIndex = this.deck.length - 1;
-        let maxSafetyScore = -Infinity;
-        
-        const cheater = this.players[cheaterId];
-        const opponent = this.players[opponentId];
-
-        this.deck.forEach((c, index) => {
-            let safetyScore = 0;
-
-            // 1. CRITICAL: Do NOT give them card that matches Cheater's pile
-            if (cheater.pile.length > 0) {
-                const myTop = cheater.pile[cheater.pile.length - 1];
-                if (c.rank === myTop.rank) {
-                    safetyScore -= 5000; // Absolute NO
-                }
-            }
-
-            // 2. Do NOT help them build their own pile (makes it harder for me to steal later)
-            if (opponent.pile.length > 0) {
-                const oppTop = opponent.pile[opponent.pile.length - 1];
-                if (c.rank === oppTop.rank) {
-                    safetyScore -= 1000; // Don't help them
-                }
-            }
-
-            // 3. Prefer "Dud" cards (Discards)
-            // If card matches nothing on table, it forces a discard.
-            const tableMatch = this.faceUpCards.some(fc => fc.rank === c.rank);
-            if (!tableMatch) {
-                safetyScore += 100; // Good, force them to waste a turn discarding
-            }
-
-            // 4. Give them Low Value cards
-            safetyScore -= c.val; // Higher value = lower safety score
-
-            if (safetyScore > maxSafetyScore) {
-                maxSafetyScore = safetyScore;
-                bestIndex = index;
-            }
-        });
-
-        const safeCard = this.deck.splice(bestIndex, 1)[0];
-        return safeCard;
-    }
-
-    hasCheaterInRoom() {
-        return this.players.some(p => p.isCheater);
-    }
-
-    // Duplicated logic helper for server-side checks
-    analyzeMoveLogic(pid, card) {
+    // Helper: Calculate value of ANY card (from deck or hand)
+    analyzeCard(pid, card) {
         const p = this.players[pid];
         let result = { canCapture: false, stealTargets: [], tableMatch: [], selfMatch: false };
-        
+
         this.players.forEach(opp => {
             if (opp.id === pid || opp.pile.length === 0) return;
             if (opp.pile[opp.pile.length-1].rank === card.rank) {
@@ -224,6 +124,68 @@ class Game {
         return result;
     }
 
+    findBestCard(pid) {
+        let bestIndex = this.deck.length - 1; // Default to top card
+        let maxScore = -Infinity;
+
+        this.deck.forEach((c, index) => {
+            let score = c.val; // Base value
+            const analysis = this.analyzeCard(pid, c);
+
+            // 1. Steal is KING (Massive points)
+            if (analysis.stealTargets.length > 0) {
+                let stealCount = 0;
+                analysis.stealTargets.forEach(t => stealCount += t.cards.length);
+                score += 1000 + (stealCount * 50);
+            }
+            // 2. Self Match (Safety)
+            if (analysis.selfMatch) score += 500;
+            // 3. Table Match
+            if (analysis.tableMatch.length > 0) score += 200 + (analysis.tableMatch.length * 20);
+
+            if (score > maxScore) {
+                maxScore = score;
+                bestIndex = index;
+            }
+        });
+
+        return this.deck.splice(bestIndex, 1)[0];
+    }
+
+    findSabotageCard(opponentId, cheaterId) {
+        // Give opponent the WORST card possible (minimize damage to cheater)
+        let bestIndex = this.deck.length - 1;
+        let maxSafetyScore = -Infinity;
+
+        const cheater = this.players[cheaterId];
+        const opponent = this.players[opponentId];
+
+        this.deck.forEach((c, index) => {
+            let safety = 0;
+
+            // Avoid matching Cheater's pile
+            if (cheater.pile.length > 0 && c.rank === cheater.pile[cheater.pile.length-1].rank) safety -= 5000;
+
+            // Avoid helping Opponent build
+            if (opponent.pile.length > 0 && c.rank === opponent.pile[opponent.pile.length-1].rank) safety -= 1000;
+
+            // Avoid Table matches (giving free points)
+            if (this.faceUpCards.some(fc => fc.rank === c.rank)) safety -= 200;
+
+            // Prefer low value cards
+            safety -= c.val;
+
+            if (safety > maxSafetyScore) {
+                maxSafetyScore = safety;
+                bestIndex = index;
+            }
+        });
+
+        return this.deck.splice(bestIndex, 1)[0];
+    }
+
+    hasCheaterInRoom() { return this.players.some(p => p.isCheater); }
+
     // --- STANDARD ACTIONS ---
     performDiscard(pid, cardIdx) {
         if (this.turnPhase !== 'PLAY') return null;
@@ -240,7 +202,9 @@ class Game {
         const p = this.players[pid];
         if(!p.hand[cardIdx]) return null;
         const card = p.hand[cardIdx];
-        const analysis = this.analyzeMove(pid, cardIdx);
+
+        // Use shared helper
+        const analysis = this.analyzeCard(pid, card);
         if(!analysis.canCapture) return null;
 
         p.hand.splice(cardIdx, 1);
@@ -272,16 +236,14 @@ class Game {
 
     isGameOver() { return this.deck.length === 0 && this.players.every(p => p.hand.length === 0); }
 
-    analyzeMove(pid, cardIdx) { return this.analyzeMoveLogic(pid, this.players[pid].hand[cardIdx]); }
-
     calculateBotMove(pid) {
         if(this.turnPhase === 'DRAW') return { type: 'DRAW', ...this.performDraw(pid) };
         const bot = this.players[pid];
         let best = { idx: 0, priority: 0 };
         for(let i=0; i<bot.hand.length; i++) {
-            const an = this.analyzeMove(pid, i);
+            const an = this.analyzeCard(pid, bot.hand[i]);
             let prio = 1;
-            if(an.canCapture) prio = 5 + an.stealTargets.length + an.tableMatch.length;
+            if(an.canCapture) prio = 5 + an.stealTargets.length + (an.tableMatch.length ? 2 : 0) + (an.selfMatch ? 1 : 0);
             if(prio > best.priority) best = { idx: i, priority: prio };
         }
         if(best.priority > 1) return { type: 'CAPTURE', ...this.performCapture(pid, best.idx) };
@@ -289,7 +251,7 @@ class Game {
     }
 }
 
-// --- SERVER EVENTS ---
+// --- EVENTS ---
 const rooms = {};
 
 io.on('connection', (socket) => {
@@ -301,10 +263,12 @@ io.on('connection', (socket) => {
             socket.join(roomId);
             const game = new Game(config || {});
             game.init();
+
             game.players[0].name = playerName || "Host";
             game.players[0].socketId = socket.id;
             game.players[0].userId = userId;
             game.players[0].isBot = false;
+
             rooms[roomId] = game;
             socket.roomId = roomId;
             socket.emit('roomJoined', { roomId, playerId: 0, state: game.getPublicState(0) });
@@ -323,6 +287,8 @@ io.on('connection', (socket) => {
             existing.isBot = false;
             broadcastState(roomId, game);
             socket.emit('roomJoined', { roomId, playerId: existing.id, state: game.getPublicState(existing.id) });
+            // Re-send cheat status if they disconnected
+            socket.emit('cheatStatus', existing.isCheater);
             return;
         }
 
@@ -341,15 +307,13 @@ io.on('connection', (socket) => {
         }
     });
 
-    // SECRET: Toggle Cheat Mode
     socket.on('toggleCheat', ({ roomId, userId }) => {
         const game = rooms[roomId];
         if(game) {
             const p = game.players.find(pl => pl.userId === userId);
             if(p) {
                 p.isCheater = !p.isCheater;
-                console.log(`[CHEAT] Player ${p.name} cheat mode: ${p.isCheater}`);
-                socket.emit('cheatStatus', p.isCheater); // Ack back to client
+                socket.emit('cheatStatus', p.isCheater);
             }
         }
     });
