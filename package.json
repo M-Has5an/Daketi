@@ -1,15 +1,18 @@
 {
   "name": "robber-daketi-online",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "type": "module",
   "scripts": {
-    "start": "node server.js"
+    "start": "node --env-file-if-exists=.env server.js",
+    "prepare": "node scripts/prepare.js",
+    "test": "node --test test/*.test.js",
+    "test:load": "node scripts/load-test.js",
+    "build:static": "node scripts/build-static.js",
+    "check": "node --experimental-vm-modules --disable-warning=ExperimentalWarning scripts/check.js"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "socket.io": "^4.7.2"
+    "express": "^4.21.2",
+    "socket.io": "^4.8.1"
   },
-  "devDependencies": {
-    "@flydotio/dockerfile": "^0.7.10"
-  }
+  "engines": { "node": ">=22.18" }
 }

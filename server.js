@@ -1,390 +1,219 @@
 import express from 'express';
-import { createServer } from 'http';
-import { Server } from 'socket.io';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import {createServer} from 'node:http';
+import {randomBytes,randomInt} from 'node:crypto';
+import {fileURLToPath,pathToFileURL} from 'node:url';
+import path from 'node:path';
+import {Server} from 'socket.io';
+import {Game,RuleError,validateConfig,score} from './public/shared/game.js';
+import {RoomStore} from './server/storage.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const root=path.dirname(fileURLToPath(import.meta.url));
+const tokenPattern=/^[A-Za-z0-9_-]{43}$/;
+const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const cleanName=value=>String(value||'Player').replace(/[\u0000-\u001f\u007f]/g,'').trim().slice(0,24)||'Player';
+const publicConfig=c=>({numPlayers:c.numPlayers,handSize:c.handSize,faceUpSize:c.faceUpSize,difficulty:c.difficulty});
+const emptySeat=()=>({token:null,socketId:null,ready:false,disconnectedAt:null,rematch:false,totals:{wins:0,points:0,rounds:0}});
 
-const app = express();
-const httpServer = createServer(app);
-const io = new Server(httpServer, {
-    pingTimeout: 60000,
-    pingInterval: 25000
-});
+export async function createApplication(options={}) {
+  const app=express(),httpServer=createServer(app),rooms=new Map(),sessions=new Map();
+  const store=options.store||new RoomStore();
+  const reconnectGrace=options.reconnectGrace??90000,botDelay=options.botDelay??650,moveDuration=options.moveDuration??470;
+  const maxRooms=options.maxRooms??200;
+  const allowedOrigins=(options.allowedOrigins??process.env.ALLOWED_ORIGINS??'').split(',').map(v=>v.trim()).filter(Boolean);
+  const originAllowed=(origin,host)=>{
+    if(!origin)return true;
+    try{return new URL(origin).host===host||allowedOrigins.includes(origin);}catch{return false;}
+  };
+  const io=new Server(httpServer,{pingInterval:20000,pingTimeout:20000,maxHttpBufferSize:8192,
+    cors:{origin:(origin,callback)=>callback(null,!origin||allowedOrigins.includes(origin)||!allowedOrigins.length)},
+    allowRequest:(request,callback)=>callback(null,originAllowed(request.headers.origin,request.headers.host))});
+  app.disable('x-powered-by');
+  app.use((req,res,next)=>{
+    res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','same-origin');res.setHeader('X-Frame-Options','DENY');
+    res.setHeader('Permissions-Policy','camera=(), microphone=(), geolocation=()');
+    res.setHeader('Content-Security-Policy',`default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' ${allowedOrigins.join(' ')}; worker-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`);
+    next();
+  });
+  app.get('/health',(_req,res)=>res.set('Cache-Control','no-store').json({ok:true,version:'2.0.0'}));
+  app.get('/api/config',(_req,res)=>res.set('Cache-Control','no-store').json({apiUrl:'',version:'2.0.0'}));
+  app.use(express.static(path.join(root,'public'),{etag:true,maxAge:'1h',setHeaders:(res,file)=>{if(/\.(html|js|css)$/.test(file))res.setHeader('Cache-Control','no-cache');}}));
 
-app.use(express.static(path.join(__dirname, 'public')));
-
-// --- GAME LOGIC ---
-const SUITS = ['♠', '♥', '♣', '♦'];
-const RANKS = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
-const VALUES = {'2':5,'3':5,'4':5,'5':5,'6':5,'7':5,'8':5,'9':5,'10':5,'J':10,'Q':10,'K':10,'A':20};
-
-class Card {
-    constructor(rank, suit) {
-        this.rank = rank; this.suit = suit; this.val = VALUES[rank];
-        this.color = (suit === '♥' || suit === '♦') ? 'red' : 'black';
-        this.id = Math.random().toString(36).substr(2, 9);
+  const snapshot=()=>[...rooms.values()].map(r=>({code:r.code,status:r.status,hostId:r.hostId,version:r.version,round:r.round,createdAt:r.createdAt,lastActive:r.lastActive,cheatOwner:r.cheatOwner,log:r.log,game:r.game.snapshot(),seats:r.seats.map(s=>({...s,socketId:null})),lockUntil:0}));
+  let saveTimer=null,storageWarning=false,saving=false,dirty=false,closing=false;
+  const persist=()=>{
+    if(store.kind==='memory'||closing)return;
+    dirty=true;if(saveTimer||saving)return;
+    // Throttle checkpoints so constant multiplayer traffic cannot postpone every save.
+    saveTimer=setTimeout(()=>{saveTimer=null;dirty=false;saving=true;store.save(snapshot()).then(()=>{storageWarning=false;}).catch(()=>{if(!storageWarning)console.warn('Room checkpoint failed; live play continues. Check storage configuration.');storageWarning=true;}).finally(()=>{saving=false;if(dirty)persist();});},options.saveDelay??750);
+    saveTimer.unref?.();
+  };
+  for(const saved of await store.load()) {
+    if(!saved||Date.now()-saved.lastActive>86400000)continue;
+    try{
+      const r={...saved,game:Game.restore(saved.game),botTimer:null,lockUntil:0};
+      r.seats=r.seats.map(s=>({...s,socketId:null,disconnectedAt:s.token?Date.now():null}));rooms.set(r.code,r);
+      for(const player of r.game.players)player.isBot=true;
+      for(let id=0;id<r.seats.length;id++){const s=r.seats[id];if(s.token)sessions.set(s.token,{token:s.token,roomCode:r.code,seatId:id,socketId:null,lastSeen:Date.now()});}
+    }catch{console.warn('Skipped an invalid room checkpoint.');}
+  }
+  const roomFor=socket=>rooms.get(socket.data.session.roomCode);
+  const activeHumans=r=>r.seats.some(s=>s.token&&s.socketId);
+  const stateFor=(r,pid)=>{const game=r.game.publicState(pid);return{roomCode:r.code,status:r.status,hostId:r.hostId,version:r.version,round:r.round,config:publicConfig(r.game.config),paused:r.status==='playing'&&!activeHumans(r),log:r.log,
+    ...game,players:game.players.map(p=>({...p,connected:!!r.seats[p.id].socketId,reserved:!!r.seats[p.id].token,ready:r.seats[p.id].ready,rematch:r.seats[p.id].rematch,totals:{...r.seats[p.id].totals}}))};};
+  const broadcast=r=>{for(let id=0;id<r.seats.length;id++){const s=r.seats[id];if(s.socketId)io.to(s.socketId).emit('stateUpdate',stateFor(r,id));}};
+  const clearBot=r=>{clearTimeout(r.botTimer);r.botTimer=null;};
+  const touch=r=>{r.version++;r.lastActive=Date.now();persist();};
+  const addLog=(r,text)=>{r.log.push({id:r.version,text,at:Date.now()});if(r.log.length>12)r.log.shift();};
+  const resetCheat=r=>{if(r.cheatOwner!==null){const owner=r.seats[r.cheatOwner];if(owner?.socketId)io.to(owner.socketId).emit('privateMode',{enabled:false,strength:r.game.config.cheatStrength});}r.cheatOwner=null;};
+  function scheduleBot(r) {
+    clearBot(r);
+    if(r.status!=='playing'||!activeHumans(r)||!r.game.players[r.game.currentPlayerIdx].isBot)return;
+    const expectedVersion=r.version,expectedPlayer=r.game.currentPlayerIdx;
+    r.botTimer=setTimeout(()=>{
+      r.botTimer=null;
+      if(!rooms.has(r.code)||r.status!=='playing'||r.version!==expectedVersion||r.game.currentPlayerIdx!==expectedPlayer||!r.game.players[expectedPlayer].isBot||!activeHumans(r))return;
+      try{const owner=r.cheatOwner!==null&&r.seats[r.cheatOwner]?.socketId?r.cheatOwner:null;const move=r.game.calculateBotMove(expectedPlayer,owner);if(move)publishMove(r,move);else{touch(r);broadcast(r);scheduleBot(r);}}catch(error){console.error('Bot move failed:',error.message);}
+    },Math.max(0,r.lockUntil-Date.now())+botDelay);
+    r.botTimer.unref?.();
+  }
+  function publishMove(r,move) {
+    clearBot(r);touch(r);r.lockUntil=Date.now()+moveDuration;
+    const name=r.game.players[move.playerId].name;
+    addLog(r,move.type==='DRAW'?`${name} drew a card.`:move.type==='DISCARD'?`${name} discarded ${move.card.rank}${move.card.suit}.`:`${name} captured ${move.analysis.tableMatch.length+1} card${move.analysis.tableMatch.length?'s':''}${move.analysis.stealTargets.length?` and stole ${move.analysis.stealTargets.reduce((n,t)=>n+t.cards.length,0)}`:''}.${move.extraTurn?' Another turn!':''}`);
+    if(r.game.finished){
+      r.status='finished';const maximum=Math.max(...r.game.players.map(p=>score(p.pile)));
+      for(const p of r.game.players){const t=r.seats[p.id].totals;t.rounds++;t.points+=score(p.pile);if(score(p.pile)===maximum)t.wins++;}
+      resetCheat(r);persist();
     }
+    for(let id=0;id<r.seats.length;id++) {
+      const seat=r.seats[id];if(!seat.socketId)continue;
+      // Never send another player's drawn rank, suit, or card ID, even for animation.
+      const event={...move,id:r.version,round:r.round,duration:moveDuration};
+      if(move.type==='DRAW'&&id!==move.playerId)delete event.card;
+      io.to(seat.socketId).emit('move',{event,state:stateFor(r,id)});
+    }
+    scheduleBot(r);
+  }
+  function startRound(r) {
+    clearBot(r);resetCheat(r);r.round++;r.status='playing';
+    r.game.init((r.round-1)%r.game.players.length);r.log=[];
+    for(let id=0;id<r.seats.length;id++){r.seats[id].rematch=false;r.game.players[id].isBot=!r.seats[id].token||!r.seats[id].socketId;}
+    touch(r);r.lockUntil=Date.now()+moveDuration;addLog(r,`Round ${r.round}. ${r.game.players[r.game.currentPlayerIdx].name} starts.`);
+    for(let id=0;id<r.seats.length;id++)if(r.seats[id].socketId)io.to(r.seats[id].socketId).emit('roundStarted',stateFor(r,id));
+    scheduleBot(r);
+  }
+  function releaseSeat(r,id) {
+    const seat=r.seats[id];if(r.cheatOwner===id)resetCheat(r);
+    if(seat.token){const session=sessions.get(seat.token);if(session){session.roomCode=null;session.seatId=null;}}
+    r.seats[id]=emptySeat();r.game.players[id].isBot=true;r.game.players[id].name=`Bot ${id+1}`;
+    if(r.hostId===id){const next=r.seats.findIndex(s=>s.token&&s.socketId);const reserved=r.seats.findIndex(s=>s.token);if(next>=0||reserved>=0){r.hostId=next>=0?next:reserved;r.seats[r.hostId].ready=true;}}
+  }
+  function leave(socket) {
+    const session=socket.data.session,r=roomFor(socket);
+    if(!r)return;
+    if(r.seats[session.seatId]?.socketId===socket.id){clearBot(r);releaseSeat(r,session.seatId);touch(r);broadcast(r);scheduleBot(r);}
+    socket.leave(r.code);session.roomCode=null;session.seatId=null;
+  }
+  function seatSocket(socket,r,id) {
+    const session=socket.data.session,seat=r.seats[id];
+    seat.token=session.token;seat.socketId=socket.id;seat.disconnectedAt=null;
+    session.roomCode=r.code;session.seatId=id;socket.join(r.code);r.game.players[id].isBot=false;
+    clearBot(r);touch(r);socket.emit('roomJoined',{playerId:id,state:stateFor(r,id)});broadcast(r);
+    if(r.cheatOwner===id)socket.emit('privateMode',{enabled:true,strength:r.game.config.cheatStrength});
+    scheduleBot(r);
+  }
+  io.on('connection',socket=>{
+    const supplied=socket.handshake.auth?.sessionToken;
+    let session=typeof supplied==='string'&&tokenPattern.test(supplied)?sessions.get(supplied):null;
+    if(session?.socketId&&io.sockets.sockets.has(session.socketId)){socket.emit('sessionConflict');socket.disconnect(true);return;}
+    if(!session){const token=randomBytes(32).toString('base64url');session={token,roomCode:null,seatId:null,socketId:null,lastSeen:Date.now()};sessions.set(token,session);}
+    session.socketId=socket.id;session.lastSeen=Date.now();socket.data.session=session;
+    const resumed=rooms.get(session.roomCode);
+    socket.emit('hello',{sessionToken:session.token,hasRoom:!!resumed&&resumed.seats[session.seatId]?.token===session.token});
+    if(resumed&&resumed.seats[session.seatId]?.token===session.token)seatSocket(socket,resumed,session.seatId);
+    let bucket=50,lastRefill=Date.now();
+    const handle=(event,fn)=>socket.on(event,(body={},ack)=>{
+      if(typeof body==='function'){ack=body;body={};}
+      const reply=typeof ack==='function'?ack:()=>{};
+      try{
+        const now=Date.now();bucket=Math.min(50,bucket+(now-lastRefill)/200);lastRefill=now;
+        if(bucket<1)throw new RuleError('Please wait a moment before trying again.');bucket--;
+        if(!body||typeof body!=='object'||Array.isArray(body))throw new RuleError('Invalid request.');
+        session.lastSeen=now;const result=fn(body);reply({ok:true,...result});
+      }catch(error){reply({ok:false,error:error instanceof RuleError?error.message:'That action could not be completed. Try again.'});if(!(error instanceof RuleError))console.error('Request failed:',error.message);}
+    });
+    handle('createRoom',body=>{
+      if(roomFor(socket))throw new RuleError('Leave your current room before creating another.');
+      if(rooms.size>=maxRooms)throw new RuleError('All tables are occupied. Please try again shortly.');
+      const game=new Game(validateConfig(body.config),randomInt(0,4294967296));
+      let code;do{code=Array.from({length:6},()=>alphabet[randomInt(alphabet.length)]).join('');}while(rooms.has(code));
+      game.players[0].name=cleanName(body.name);const now=Date.now();
+      const r={code,game,seats:game.players.map(emptySeat),hostId:0,status:'waiting',round:0,version:0,createdAt:now,lastActive:now,cheatOwner:null,log:[],lockUntil:0,botTimer:null};
+      r.seats[0].ready=true;rooms.set(code,r);seatSocket(socket,r,0);return{};
+    });
+    handle('joinRoom',body=>{
+      const code=String(body.code||'').trim().toUpperCase();if(!/^[A-Z2-9]{6}$/.test(code))throw new RuleError('Enter the six-character room code.');
+      const r=rooms.get(code);if(!r)throw new RuleError('That room has expired or does not exist.');
+      const own=r.seats.findIndex(s=>s.token===session.token);
+      if(own>=0){seatSocket(socket,r,own);return{};}
+      const id=r.seats.findIndex(s=>!s.token);if(id<0)throw new RuleError('This room is full. Disconnected seats are reserved briefly.');
+      leave(socket);r.game.players[id].name=cleanName(body.name);r.seats[id].ready=false;seatSocket(socket,r,id);return{};
+    });
+    handle('ready',body=>{const r=roomFor(socket);if(!r||r.status!=='waiting')throw new RuleError('The round has already started.');r.seats[session.seatId].ready=!!body.ready;touch(r);broadcast(r);return{};});
+    handle('startRound',()=>{
+      const r=roomFor(socket);if(!r||r.hostId!==session.seatId||r.status!=='waiting')throw new RuleError('Only the host can start the table.');
+      if(r.seats.some(s=>s.token&&(!s.socketId||!s.ready)))throw new RuleError('Wait until every player is connected and ready.');startRound(r);return{};
+    });
+    handle('action',body=>{
+      const r=roomFor(socket);if(!r||r.status!=='playing')throw new RuleError('Join a running round first.');
+      if(body.version!==r.version)throw new RuleError('The table changed. Please try your move again.');
+      if(Date.now()<r.lockUntil)throw new RuleError('Let the current move finish.');
+      const pid=session.seatId;if(r.seats[pid]?.socketId!==socket.id)throw new RuleError('Reconnect to your seat.');
+      const owner=r.cheatOwner!==null&&r.seats[r.cheatOwner]?.socketId?r.cheatOwner:null;
+      let move;if(body.type==='DRAW')move=r.game.performDraw(pid,owner);else if(body.type==='CAPTURE')move=r.game.performCapture(pid,body.cardId);else if(body.type==='DISCARD')move=r.game.performDiscard(pid,body.cardId);else throw new RuleError('Choose a valid move.');
+      publishMove(r,move);return{version:r.version};
+    });
+    handle('sync',()=>{const r=roomFor(socket);if(r)socket.emit('stateUpdate',stateFor(r,session.seatId));return{};});
+    handle('privateMode',body=>{
+      const r=roomFor(socket);if(!r||r.status!=='playing')return{enabled:false};
+      const id=session.seatId;if(r.seats[id]?.socketId!==socket.id)return{enabled:false};
+      if(body.enabled===false&&r.cheatOwner===id)r.cheatOwner=null;
+      else if(body.enabled===true&&(r.cheatOwner===null||r.cheatOwner===id))r.cheatOwner=id;
+      if(r.cheatOwner===id&&['gentle','classic','strong'].includes(body.strength))r.game.config.cheatStrength=body.strength;
+      // Ownership never appears in public state or room broadcasts.
+      persist();return{enabled:r.cheatOwner===id,strength:r.cheatOwner===id?r.game.config.cheatStrength:'classic'};
+    });
+    handle('rematch',body=>{
+      const r=roomFor(socket);if(!r||r.status!=='finished')throw new RuleError('Finish the current round first.');
+      r.seats[session.seatId].rematch=body.ready!==false;touch(r);broadcast(r);
+      if(r.seats.every(s=>!s.token||(s.socketId&&s.rematch)))startRound(r);return{};
+    });
+    handle('leaveRoom',()=>{leave(socket);return{};});
+    socket.on('disconnect',()=>{
+      if(session.socketId!==socket.id)return;session.socketId=null;session.lastSeen=Date.now();
+      const r=roomFor(socket);if(!r)return;const seat=r.seats[session.seatId];if(seat?.socketId!==socket.id)return;
+      seat.socketId=null;seat.disconnectedAt=Date.now();r.game.players[session.seatId].isBot=true;clearBot(r);touch(r);broadcast(r);scheduleBot(r);
+    });
+  });
+  const cleanup=setInterval(()=>{
+    const now=Date.now();let changed=false;
+    for(const r of rooms.values()){
+      let roomChanged=false;
+      for(let id=0;id<r.seats.length;id++){const s=r.seats[id];if(s.token&&!s.socketId&&s.disconnectedAt!==null&&now-s.disconnectedAt>reconnectGrace){releaseSeat(r,id);roomChanged=true;}}
+      if(roomChanged){touch(r);broadcast(r);if(r.status==='finished'&&activeHumans(r)&&r.seats.every(s=>!s.token||(s.socketId&&s.rematch)))startRound(r);else scheduleBot(r);changed=true;}
+      const expiry=r.status==='waiting'?7200000:r.status==='finished'?1800000:1200000;
+      if(!activeHumans(r)&&now-r.lastActive>expiry){clearBot(r);for(let id=0;id<r.seats.length;id++)releaseSeat(r,id);rooms.delete(r.code);changed=true;}
+    }
+    for(const [token,s]of sessions)if(!s.socketId&&!s.roomCode&&now-s.lastSeen>7200000)sessions.delete(token);
+    if(changed)persist();
+  },options.cleanupInterval??10000);cleanup.unref();
+  const close=async()=>{closing=true;clearInterval(cleanup);clearTimeout(saveTimer);for(const r of rooms.values())clearBot(r);try{await store.save(snapshot());}catch{console.warn('Final room checkpoint failed.');}await new Promise(resolve=>io.close(resolve));if(httpServer.listening)await new Promise(resolve=>httpServer.close(resolve));};
+  return{app,httpServer,io,rooms,sessions,store,close,stateFor,snapshot};
 }
 
-class Player {
-    constructor(id, name, isBot) {
-        this.id = id; this.name = name; this.isBot = isBot;
-        this.hand = []; this.pile = [];
-        this.socketId = null; this.userId = null;
-        this.isCheater = false;
-    }
+if(process.argv[1]&&import.meta.url===pathToFileURL(path.resolve(process.argv[1])).href){
+  const server=await createApplication();const port=Number(process.env.PORT)||3000;
+  server.httpServer.listen(port,'0.0.0.0',()=>console.log(`Daketi is ready on port ${port}. Room storage: ${server.store.kind}.`));
+  const shutdown=()=>{server.close().then(()=>process.exit(0)).catch(()=>process.exit(1));setTimeout(()=>process.exit(1),8000).unref();};
+  process.once('SIGTERM',shutdown);process.once('SIGINT',shutdown);
 }
-
-class Game {
-    constructor(config) {
-        this.numPlayers = Number(config.numPlayers) || 2;
-        this.handSize = Number(config.handSize) || 6;
-        this.faceUpSize = Number(config.faceUpSize) || 6;
-        this.deck = []; this.faceUpCards = []; this.players = [];
-        this.currentPlayerIdx = 0; this.turnPhase = 'DRAW';
-    }
-
-    init() {
-        let d = [];
-        for(let s of SUITS) for(let r of RANKS) d.push(new Card(r, s));
-        for (let i = d.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [d[i], d[j]] = [d[j], d[i]];
-        }
-        this.deck = d;
-        this.players = [];
-        for(let i=0; i<this.numPlayers; i++) this.players.push(new Player(i, `Bot ${i}`, true));
-        for(let i=0; i<this.handSize; i++) this.players.forEach(p => { if(this.deck.length) p.hand.push(this.deck.pop()); });
-        for(let i=0; i<this.faceUpSize; i++) if(this.deck.length) this.faceUpCards.push(this.deck.pop());
-    }
-
-    getPublicState(forPlayerId) {
-        return {
-            deckCount: this.deck.length,
-            faceUpCards: this.faceUpCards,
-            currentPlayerIdx: this.currentPlayerIdx,
-            turnPhase: this.turnPhase,
-            players: this.players.map(p => ({
-                id: p.id, name: p.name, isBot: p.isBot, pile: p.pile, handCount: p.hand.length,
-                hand: (p.id === forPlayerId) ? p.hand : null
-            }))
-        };
-    }
-
-    // --- RIGGED DRAW LOGIC ---
-    performDraw(pid) {
-        if (this.turnPhase !== 'DRAW') return null;
-        if (this.deck.length === 0) return null;
-
-        const player = this.players[pid];
-        let card;
-
-        // Priority: Cheat for Cheater -> Sabotage for Opponent -> Random
-        if (player.isCheater) {
-            card = this.findBestCard(pid);
-            console.log(`[CHEAT] Giving ${player.name} best card: ${card.rank}${card.suit}`);
-        }
-        else if (this.hasCheaterInRoom()) {
-            const cheater = this.players.find(p => p.isCheater);
-            card = this.findSabotageCard(pid, cheater.id);
-        }
-        else {
-            card = this.deck.pop();
-        }
-
-        player.hand.push(card);
-        this.turnPhase = 'PLAY';
-        return { animDetails: { card } };
-    }
-
-    // Helper: Calculate value of ANY card (from deck or hand)
-    analyzeCard(pid, card) {
-        const p = this.players[pid];
-        let result = { canCapture: false, stealTargets: [], tableMatch: [], selfMatch: false };
-
-        this.players.forEach(opp => {
-            if (opp.id === pid || opp.pile.length === 0) return;
-            if (opp.pile[opp.pile.length-1].rank === card.rank) {
-                let steal = [];
-                for(let k=opp.pile.length-1; k>=0; k--) {
-                    if(opp.pile[k].rank === card.rank) steal.push(opp.pile[k]); else break;
-                }
-                result.stealTargets.push({ id: opp.id, cards: steal });
-            }
-        });
-
-        const tbl = this.faceUpCards.filter(c => c.rank === card.rank);
-        if(tbl.length > 0) result.tableMatch = tbl;
-        if(p.pile.length > 0 && p.pile[p.pile.length-1].rank === card.rank) result.selfMatch = true;
-
-        if(result.stealTargets.length > 0 || result.tableMatch.length > 0 || result.selfMatch) result.canCapture = true;
-        return result;
-    }
-
-    findBestCard(pid) {
-        let bestIndex = this.deck.length - 1; // Default to top card
-        let maxScore = -Infinity;
-
-        this.deck.forEach((c, index) => {
-            let score = c.val; // Base value
-            const analysis = this.analyzeCard(pid, c);
-
-            // 1. Steal is KING (Massive points)
-            if (analysis.stealTargets.length > 0) {
-                let stealCount = 0;
-                analysis.stealTargets.forEach(t => stealCount += t.cards.length);
-                score += 1000 + (stealCount * 50);
-            }
-            // 2. Self Match (Safety)
-            if (analysis.selfMatch) score += 500;
-            // 3. Table Match
-            if (analysis.tableMatch.length > 0) score += 200 + (analysis.tableMatch.length * 20);
-
-            if (score > maxScore) {
-                maxScore = score;
-                bestIndex = index;
-            }
-        });
-
-        return this.deck.splice(bestIndex, 1)[0];
-    }
-
-    findSabotageCard(opponentId, cheaterId) {
-        // Give opponent the WORST card possible (minimize damage to cheater)
-        let bestIndex = this.deck.length - 1;
-        let maxSafetyScore = -Infinity;
-
-        const cheater = this.players[cheaterId];
-        const opponent = this.players[opponentId];
-
-        this.deck.forEach((c, index) => {
-            let safety = 0;
-
-            // Avoid matching Cheater's pile
-            if (cheater.pile.length > 0 && c.rank === cheater.pile[cheater.pile.length-1].rank) safety -= 5000;
-
-            // Avoid helping Opponent build
-            if (opponent.pile.length > 0 && c.rank === opponent.pile[opponent.pile.length-1].rank) safety -= 1000;
-
-            // Avoid Table matches (giving free points)
-            if (this.faceUpCards.some(fc => fc.rank === c.rank)) safety -= 200;
-
-            // Prefer low value cards
-            safety -= c.val;
-
-            if (safety > maxSafetyScore) {
-                maxSafetyScore = safety;
-                bestIndex = index;
-            }
-        });
-
-        return this.deck.splice(bestIndex, 1)[0];
-    }
-
-    hasCheaterInRoom() { return this.players.some(p => p.isCheater); }
-
-    // --- STANDARD ACTIONS ---
-    performDiscard(pid, cardIdx) {
-        if (this.turnPhase !== 'PLAY') return null;
-        const p = this.players[pid];
-        if(!p.hand[cardIdx]) return null;
-        const card = p.hand.splice(cardIdx, 1)[0];
-        this.faceUpCards.push(card);
-        this.endTurn();
-        return { animDetails: { card } };
-    }
-
-    performCapture(pid, cardIdx) {
-        if (this.turnPhase !== 'PLAY') return null;
-        const p = this.players[pid];
-        if(!p.hand[cardIdx]) return null;
-        const card = p.hand[cardIdx];
-
-        // Use shared helper
-        const analysis = this.analyzeCard(pid, card);
-        if(!analysis.canCapture) return null;
-
-        p.hand.splice(cardIdx, 1);
-        analysis.stealTargets.forEach(t => {
-            const opp = this.players[t.id];
-            const stolen = opp.pile.splice(opp.pile.length - t.cards.length, t.cards.length);
-            p.pile.push(...stolen);
-        });
-        if(analysis.tableMatch.length > 0) {
-            const ids = analysis.tableMatch.map(c => c.id);
-            this.faceUpCards = this.faceUpCards.filter(c => !ids.includes(c.id));
-            p.pile.push(...analysis.tableMatch);
-        }
-        p.pile.push(card);
-
-        if(this.deck.length > 0) {
-            this.turnPhase = 'DRAW';
-            return { animDetails: { card, analysis, extraTurn: true } };
-        } else {
-            this.endTurn();
-            return { animDetails: { card, analysis, extraTurn: false } };
-        }
-    }
-
-    endTurn() {
-        this.currentPlayerIdx = (this.currentPlayerIdx + 1) % this.players.length;
-        this.turnPhase = (this.deck.length > 0) ? 'DRAW' : 'PLAY';
-    }
-
-    isGameOver() { return this.deck.length === 0 && this.players.every(p => p.hand.length === 0); }
-
-    calculateBotMove(pid) {
-        if(this.turnPhase === 'DRAW') return { type: 'DRAW', ...this.performDraw(pid) };
-        const bot = this.players[pid];
-        let best = { idx: 0, priority: 0 };
-        for(let i=0; i<bot.hand.length; i++) {
-            const an = this.analyzeCard(pid, bot.hand[i]);
-            let prio = 1;
-            if(an.canCapture) prio = 5 + an.stealTargets.length + (an.tableMatch.length ? 2 : 0) + (an.selfMatch ? 1 : 0);
-            if(prio > best.priority) best = { idx: i, priority: prio };
-        }
-        if(best.priority > 1) return { type: 'CAPTURE', ...this.performCapture(pid, best.idx) };
-        return { type: 'DISCARD', ...this.performDiscard(pid, 0) };
-    }
-}
-
-// --- EVENTS ---
-const rooms = {};
-
-io.on('connection', (socket) => {
-    console.log(`[NET] Connected: ${socket.id}`);
-
-    socket.on('createRoom', ({ playerName, config, userId }) => {
-        try {
-            const roomId = Math.random().toString(36).substr(2, 4).toUpperCase();
-            socket.join(roomId);
-            const game = new Game(config || {});
-            game.init();
-
-            game.players[0].name = playerName || "Host";
-            game.players[0].socketId = socket.id;
-            game.players[0].userId = userId;
-            game.players[0].isBot = false;
-
-            rooms[roomId] = game;
-            socket.roomId = roomId;
-            socket.emit('roomJoined', { roomId, playerId: 0, state: game.getPublicState(0) });
-        } catch(e) { console.error(e); }
-    });
-
-    socket.on('joinRoom', ({ roomId, playerName, userId }) => {
-        const game = rooms[roomId];
-        if (!game) { socket.emit('error', 'Room Not Found'); return; }
-
-        const existing = game.players.find(p => p.userId === userId);
-        if (existing) {
-            socket.join(roomId);
-            socket.roomId = roomId;
-            existing.socketId = socket.id;
-            existing.isBot = false;
-            broadcastState(roomId, game);
-            socket.emit('roomJoined', { roomId, playerId: existing.id, state: game.getPublicState(existing.id) });
-            // Re-send cheat status if they disconnected
-            socket.emit('cheatStatus', existing.isCheater);
-            return;
-        }
-
-        const emptySlot = game.players.find(p => p.isBot);
-        if (emptySlot) {
-            socket.join(roomId);
-            socket.roomId = roomId;
-            emptySlot.name = playerName || "Guest";
-            emptySlot.socketId = socket.id;
-            emptySlot.userId = userId;
-            emptySlot.isBot = false;
-            broadcastState(roomId, game);
-            socket.emit('roomJoined', { roomId, playerId: emptySlot.id, state: game.getPublicState(emptySlot.id) });
-        } else {
-            socket.emit('error', 'Room Full');
-        }
-    });
-
-    socket.on('toggleCheat', ({ roomId, userId }) => {
-        const game = rooms[roomId];
-        if(game) {
-            const p = game.players.find(pl => pl.userId === userId);
-            if(p) {
-                p.isCheater = !p.isCheater;
-                socket.emit('cheatStatus', p.isCheater);
-            }
-        }
-    });
-
-    socket.on('action', ({ roomId, type, payload }) => {
-        const game = rooms[roomId];
-        if (!game) return;
-        const player = game.players.find(p => p.socketId === socket.id);
-        if (!player || game.currentPlayerIdx !== player.id) return;
-
-        let result = null;
-        try {
-            if (type === 'DRAW') result = game.performDraw(player.id);
-            else if (type === 'DISCARD') result = game.performDiscard(player.id, payload.cardIdx);
-            else if (type === 'CAPTURE') result = game.performCapture(player.id, payload.cardIdx);
-
-            if (result) {
-                io.to(roomId).emit('animation', { type, playerId: player.id, details: result.animDetails });
-                setTimeout(() => {
-                    if(game.isGameOver()) io.to(roomId).emit('gameOver', game.players);
-                    else {
-                        broadcastState(roomId, game);
-                        checkBotTurn(roomId, game);
-                    }
-                }, 1000);
-            }
-        } catch(e) { console.error(e); }
-    });
-
-    socket.on('disconnect', () => {
-        if(socket.roomId && rooms[socket.roomId]) {
-            const game = rooms[socket.roomId];
-            const player = game.players.find(p => p.socketId === socket.id);
-            if(player) {
-                player.socketId = null;
-                player.isBot = true;
-                broadcastState(socket.roomId, game);
-                if(game.currentPlayerIdx === player.id) checkBotTurn(socket.roomId, game);
-            }
-        }
-    });
-});
-
-function broadcastState(roomId, game) {
-    const sockets = io.sockets.adapter.rooms.get(roomId);
-    if(sockets) {
-        for (const socketId of sockets) {
-            const player = game.players.find(p => p.socketId === socketId);
-            if(player) io.to(socketId).emit('stateUpdate', game.getPublicState(player.id));
-        }
-    }
-}
-
-function checkBotTurn(roomId, game) {
-    const currentPlayer = game.players[game.currentPlayerIdx];
-    if (currentPlayer && currentPlayer.isBot) {
-        setTimeout(() => {
-            const botMove = game.calculateBotMove(currentPlayer.id);
-            if(botMove) {
-                io.to(roomId).emit('animation', { type: botMove.type, playerId: currentPlayer.id, details: botMove.animDetails });
-                setTimeout(() => {
-                    if(game.isGameOver()) io.to(roomId).emit('gameOver', game.players);
-                    else {
-                        broadcastState(roomId, game);
-                        checkBotTurn(roomId, game);
-                    }
-                }, 1200);
-            }
-        }, 1000);
-    }
-}
-
-const PORT = process.env.PORT || 3000;
-httpServer.listen(PORT, () => console.log(`SERVER RUNNING at http://localhost:${PORT}`));

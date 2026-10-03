@@ -1,114 +1,82 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Robber Daketi Pro</title>
-    <link rel="stylesheet" href="style.css">
-    <script src="/socket.io/socket.io.js"></script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#102b29">
+  <meta name="description" content="Robber Daketi. Match ranks, steal the stack, and play another hand with friends.">
+  <title>Daketi — Take the table.</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="style.css">
+  <script src="config.js"></script>
+  <script type="module" src="client.js"></script>
 </head>
 <body>
-    <div id="app">
+  <div class="ambient" aria-hidden="true"></div>
+  <header class="app-header">
+    <a class="brand" href="./" aria-label="Daketi home"><span class="brand-mark" aria-hidden="true">◇</span><span>DAKETI<small>TAKE THE TABLE.</small></span></a>
+    <nav class="header-tools" aria-label="Game tools">
+      <span id="connection" class="connection"><i></i><span>Connecting</span></span>
+      <button class="icon-button" id="rules-button" aria-label="How to play" title="How to play">?</button>
+      <button class="icon-button" id="sound-button" aria-label="Enable sound" title="Enable sound">♪</button>
+      <button class="icon-button" id="settings-button" aria-label="Settings" title="Settings">⚙</button>
+      <button class="icon-button" id="fullscreen-button" aria-label="Fullscreen" title="Fullscreen">⛶</button>
+    </nav>
+  </header>
+  <aside id="connection-notice" class="connection-notice" hidden aria-live="polite"><b id="connection-notice-title">The table is waking up.</b><span id="connection-notice-detail">We’ll connect automatically. This can take about a minute.</span></aside>
+  <main id="app">
+    <section id="home" class="home-page" aria-label="Create or join a game">
+      <div class="home-story">
+        <div class="eyebrow"><span></span> A GOOD HAND. A BETTER HEIST.</div>
+        <h1>Every card<br>is an <em>opportunity.</em></h1>
+        <p>Match a rank. Take the cards. Steal a rival’s stack.<br>Gather your friends and make your next move count.</p>
+        <div class="hero-cards" id="hero-cards" aria-hidden="true"></div>
+        <div class="home-features"><span><b>02—06</b> players</span><span><b>52</b> possibilities</span><span><b>∞</b> rematches</span></div>
+      </div>
+      <div class="lobby-panel">
+        <div class="panel-top"><span class="eyebrow">YOUR NEXT TABLE</span><span class="mini-suit">♠ ♥ ♣ ♦</span></div>
+        <h2>Make your move.</h2>
+        <label for="player-name">Your name</label><input id="player-name" maxlength="24" placeholder="What should we call you?" autocomplete="nickname">
+        <div class="tabs" role="tablist" aria-label="Room options"><button id="create-tab" role="tab" aria-selected="true" aria-controls="create-panel">Create a table</button><button id="join-tab" role="tab" aria-selected="false" aria-controls="join-panel">Join friends</button></div>
+        <form id="create-panel">
+          <div class="field-row"><div><label for="players">Seats</label><select id="players"><option value="2">2 players</option><option value="3">3 players</option><option value="4">4 players</option><option value="5">5 players</option><option value="6">6 players</option></select></div><div><label for="difficulty">Bots</label><select id="difficulty"><option value="easy">Easygoing</option><option value="medium" selected>Street smart</option><option value="hard">Mastermind</option></select></div></div>
+          <div class="field-row"><div><label for="hand-size">Cards per hand</label><input id="hand-size" type="number" min="1" max="10" value="6" required></div><div><label for="face-size">Cards on table</label><input id="face-size" type="number" min="0" max="10" value="6" required></div></div>
+          <p id="deal-note" class="field-note">18 cards dealt · 34 in the deck</p>
+          <button class="button button-gold" type="submit" id="create-button">Create table <span>↗</span></button>
+          <p class="panel-footnote">Empty seats play as bots. Invite friends before you start.</p>
+        </form>
+        <form id="join-panel" hidden><label for="room-input">Room code</label><input id="room-input" class="code-input" maxlength="6" placeholder="ABC123" autocomplete="off" spellcheck="false"><button class="button button-gold" type="submit" id="join-button">Find your table <span>↗</span></button><p class="panel-footnote">Ask the host for their six-character code or invitation link.</p></form>
+        <p id="home-error" class="form-error" role="alert"></p>
+      </div>
+    </section>
 
-        <!-- FULLSCREEN BUTTON (Top Left) -->
-        <button id="btn-full" title="Fullscreen">⛶</button>
+    <section id="waiting" class="waiting-page" hidden aria-label="Waiting room">
+      <div class="waiting-heading"><span class="eyebrow">THE TABLE IS YOURS</span><h1>A little company.<br><em>A lot of possibility.</em></h1><p>Share the invitation. Get ready. Let the cards do the talking.</p></div>
+      <div class="waiting-panel"><div class="room-label">YOUR PRIVATE TABLE</div><div class="invite-row"><button id="waiting-code" class="room-code" title="Copy room code">------</button><button id="invite-button" class="button button-outline">Copy invite ↗</button></div><div id="waiting-settings" class="waiting-settings"></div><div id="waiting-seats" class="waiting-seats"></div><p id="ready-note" class="field-note"></p><button id="start-button" class="button button-gold">Deal the cards <span>→</span></button><button id="ready-button" class="button button-gold" hidden>I’m ready <span>✓</span></button><button id="leave-waiting" class="text-button">Leave table</button></div>
+    </section>
 
-        <div id="rotate-overlay">
-            <span>📱🔄</span>
-            <h2>Please Rotate Your Device</h2>
-            <p>This game requires Landscape mode.</p>
-        </div>
+    <section id="game" class="game-page" hidden aria-label="Game table">
+      <div class="game-topbar"><div class="round-label"><span class="eyebrow" id="round-label">ROUND 01</span><span id="turn-status" role="status" aria-live="polite">Your turn</span></div><div class="room-actions"><button id="game-code" class="room-pill" title="Copy room code">------ <span>↗</span></button><button id="leave-game" class="text-button">Leave</button></div></div>
+      <div class="board" id="board">
+        <div class="table-rim" aria-hidden="true"><div class="felt"><div class="table-watermark">DAKETI<small>TAKE THE TABLE.</small></div></div></div>
+        <div id="opponents" class="opponents"></div>
+        <div class="table-center"><div class="deck-zone"><button id="deck-button" class="deck-stack" aria-label="Draw a card"><span id="deck-art"></span><span id="deck-count" class="count-badge">34</span></button><span class="zone-caption">THE DECK</span></div><div class="table-cards-wrap"><div class="table-caption"><span>ON THE TABLE</span><span id="table-count"></span></div><div id="table-cards" class="table-cards"></div><p id="empty-table" class="empty-table" hidden>A clean slate. Make the first move.</p></div></div>
+        <div id="move-banner" class="move-banner" aria-live="polite"></div>
+      </div>
+      <div class="player-area"><div class="my-stack"><button id="my-pile" class="pile-button" aria-label="Inspect your captured pile"><span class="empty-pile">◇</span></button><span class="zone-caption">YOUR STACK</span></div><div class="hand-area"><div class="hand-heading"><span id="hand-label">YOUR HAND</span><label class="sort-control">Sort <select id="hand-sort" aria-label="Sort your hand"><option value="dealt">Dealt</option><option value="rank">Rank</option><option value="suit">Suit</option></select></label></div><div id="hand" class="hand" role="group" aria-label="Your hand"></div></div><div class="my-info"><span class="eyebrow">YOUR SCORE</span><button id="my-score" class="score-number" aria-label="Your score">0</button><span id="my-name" class="my-name">You</span></div></div>
+      <div class="action-bar"><p id="move-preview">Draw a card to begin.</p><div class="actions"><button id="draw-button" class="button button-gold">Draw a card <span>↗</span></button><button id="capture-button" class="button button-gold" hidden>Take the cards <span>↗</span></button><button id="discard-button" class="button button-outline" hidden>Discard</button></div></div>
+      <div class="activity"><span class="activity-label">LAST MOVE</span><span id="last-move">The table is ready.</span><button id="results-button" class="text-button" hidden>Results ↗</button><button id="history-button" class="text-button" aria-label="View move history">History ↗</button></div>
+    </section>
+  </main>
+  <div id="toasts" class="toasts" role="status" aria-live="polite"></div>
+  <div id="announcer" class="sr-only" aria-live="polite"></div>
 
-        <!-- LOBBY -->
-        <section id="lobby" class="active-page">
-            <div class="box">
-                <div class="title">DAKETI</div>
-                <input id="p-name" placeholder="Your Name">
-
-                <div style="text-align:left; margin-top:15px;">
-                    <div class="form-group">
-                        <label>Players</label>
-                        <select id="p-count">
-                            <option value="2">2 Players</option>
-                            <option value="3">3 Players</option>
-                            <option value="4">4 Players</option>
-                            <option value="5">5 Players</option>
-                            <option value="6">6 Players</option>
-                        </select>
-                    </div>
-                    <div style="display:flex; gap:10px;">
-                        <div style="flex:1">
-                            <label>Hand Size</label>
-                            <input type="number" id="set-hand" value="6" max="10">
-                        </div>
-                        <div style="flex:1">
-                            <label>Face Up</label>
-                            <input type="number" id="set-faceup" value="6" max="10">
-                        </div>
-                    </div>
-                </div>
-
-                <button id="btn-create">CREATE GAME</button>
-                <hr style="border-color:#ffffff33; margin:15px 0;">
-                <input id="room-in" placeholder="ROOM CODE" style="text-transform:uppercase;">
-                <button id="btn-join">JOIN GAME</button>
-            </div>
-        </section>
-
-        <!-- GAME -->
-        <section id="game" class="hidden-page">
-            <div id="room-code-display" title="Click to Copy"><span id="room-code-text">----</span> 📋</div>
-
-            <div id="opponents-zone"></div>
-
-            <div id="table">
-                <div id="deck-area">
-                    <!-- Draw Pile with Badge -->
-                    <div class="card card-back" id="deck-vis"></div>
-                    <div class="pile-count" id="d-count" style="top:auto; bottom:-10px; right:-10px;">0</div>
-                </div>
-                <div id="face-up-area"></div>
-            </div>
-
-            <div id="player-zone">
-                <div class="pile-wrapper">
-                    <!-- Clickable Pile -->
-                    <div id="my-pile" class="card-pile empty"></div>
-                </div>
-                <div id="hand"></div>
-                <div class="info">
-                    <!-- ONLY SCORE -->
-                    <div id="score-txt" style="font-size:1rem; font-weight:bold; color:gold;">Score: 0</div>
-                </div>
-                <div id="controls">
-                    <button class="btn-act draw" id="btn-draw">DRAW</button>
-                    <button class="btn-act cap" id="btn-cap">CAPTURE</button>
-                    <button class="btn-act disc" id="btn-disc">DISCARD</button>
-                </div>
-            </div>
-        </section>
-
-        <div id="game-log"></div>
-    </div>
-
-    <!-- MODAL -->
-    <div id="modal-pile" class="hidden" style="position:fixed; top:0; left:0; width:100%; height:100dvh; background:rgba(0,0,0,0.9); z-index:200; display:flex; align-items:center; justify-content:center;">
-        <div class="modal-content">
-            <h3 style="color:#f1c40f; margin-top:0;">Your Pile</h3>
-            <div id="pile-grid" style="display:flex; flex-wrap:wrap; gap:5px; justify-content:center;"></div>
-            <button id="close-modal" style="margin-top:15px; width:auto; padding:8px 20px; background:#c0392b; color:white; border:none; border-radius:5px;">Close</button>
-        </div>
-    </div>
-
-    <!-- GAME SUMMARY -->
-    <div id="modal-summary" class="hidden fade-in-slow" style="position:fixed; top:0; left:0; width:100%; height:100dvh; background:rgba(0,0,0,0.95); z-index:300; display:flex; align-items:center; justify-content:center;">
-        <div class="modal-content" style="max-width:400px;">
-            <h1 style="color:#f1c40f; font-size:2rem;">GAME OVER</h1>
-            <div id="summary-details" style="text-align:left; margin:20px 0;"></div>
-            <button id="btn-restart" style="width:100%;">PLAY AGAIN</button>
-        </div>
-    </div>
-
-    <script type="module" src="client.js"></script>
+  <dialog id="rules-dialog" class="dialog rules-dialog"><div class="dialog-heading"><span class="eyebrow">LEARN THE HEIST</span><button class="icon-button" data-close="rules-dialog" aria-label="Close rules">×</button></div><h2>Simple rules.<br><em>Interesting choices.</em></h2><div class="rules-grid"><article><span>01</span><h3>Draw, then play.</h3><p>Draw one card, then capture or discard a card from your hand. Discarding passes the turn.</p></article><article><span>02</span><h3>Match the rank.</h3><p>A 7 matches any other 7. Capture all matching table cards together. Suits don’t affect matching.</p></article><article><span>03</span><h3>Steal the top.</h3><p>Match a rival’s top card to steal its consecutive matching group. The rest of their pile stays put. You can steal from several rivals at once.</p></article><article><span>04</span><h3>Keep it going.</h3><p>You may also match your own top card. Every capture earns another draw while the deck has cards. Once it’s empty, play without drawing and pass after every move.</p></article></div><div class="points-strip"><span><b>2—10</b> 5 points</span><span><b>J · Q · K</b> 10 points</span><span><b>A</b> 20 points</span></div><p class="field-note">When all hands and the deck are empty, the highest captured-pile score wins. Ties share the win. Cards left on the table score nothing.</p><p class="field-note">Keyboard: use ← → to select a card, Enter to capture, D to draw, X to discard, and Escape to clear the selection.</p><button class="button button-gold" data-close="rules-dialog">Got it. Let’s play.</button></dialog>
+  <dialog id="settings-dialog" class="dialog settings-dialog"><div class="dialog-heading"><span class="eyebrow">MAKE YOURSELF AT HOME</span><button class="icon-button" data-close="settings-dialog" aria-label="Close settings">×</button></div><h2>Your table. Your style.</h2><label for="card-back">Card backs</label><select id="card-back"><option value="noir">Midnight gold</option><option value="ruby">Ruby velvet</option><option value="classic">Emerald classic</option></select><label for="motion-setting">Animation</label><select id="motion-setting"><option value="auto">Follow device setting</option><option value="full">Full motion</option><option value="reduced">Reduced motion</option></select><label class="check-row"><span>Simple visuals</span><input id="simple-setting" type="checkbox"></label><label class="check-row"><span>Sound effects</span><input id="sound-setting" type="checkbox"></label><label for="volume-setting">Volume</label><input id="volume-setting" type="range" min="0" max="100" value="40"><div id="private-settings" hidden><hr><label class="check-row"><span>Private draw setting</span><input id="private-toggle" type="checkbox"></label><label for="private-strength">Strength</label><select id="private-strength"><option value="gentle">Gentle</option><option value="classic" selected>Classic</option><option value="strong">Strong</option></select></div><button class="button button-gold" data-close="settings-dialog">Back to the table</button></dialog>
+  <dialog id="pile-dialog" class="dialog"><div class="dialog-heading"><span class="eyebrow" id="pile-heading">YOUR STACK</span><button class="icon-button" data-close="pile-dialog" aria-label="Close pile">×</button></div><h2 id="pile-title">A well-earned collection.</h2><p id="pile-description" class="field-note"></p><div id="pile-grid" class="pile-grid"></div></dialog>
+  <dialog id="history-dialog" class="dialog"><div class="dialog-heading"><span class="eyebrow">THE STORY SO FAR</span><button class="icon-button" data-close="history-dialog" aria-label="Close history">×</button></div><h2>Every move counts.</h2><ol id="history-list" class="history-list"></ol></dialog>
+  <dialog id="summary-dialog" class="dialog summary-dialog"><div class="dialog-heading"><span class="eyebrow">THE HAND IS PLAYED</span><button class="icon-button" data-close="summary-dialog" aria-label="Close results">×</button></div><div class="winner-mark" aria-hidden="true">♛</div><h2 id="winner-title">You took the table.</h2><p id="winner-subtitle" class="field-note"></p><div id="summary-list" class="summary-list"></div><div id="summary-stats" class="summary-stats"></div><button id="rematch-button" class="button button-gold">Another round <span>↗</span></button><p id="rematch-note" class="field-note"></p><button id="leave-summary" class="text-button">Leave table</button></dialog>
+  <dialog id="leave-dialog" class="dialog"><div class="dialog-heading"><span class="eyebrow">LEAVING SO SOON?</span><button class="icon-button" data-close="leave-dialog" aria-label="Keep playing">×</button></div><h2>Leave this table?</h2><p>A bot will take over your seat. Your friends can keep playing.</p><button id="confirm-leave" class="button button-gold">Leave table</button><button class="button button-outline" data-close="leave-dialog">Keep playing</button></dialog>
 </body>
 </html>

@@ -1,0 +1,12 @@
+import {createRequire} from 'node:module';
+import {mkdir,readFile,writeFile,copyFile} from 'node:fs/promises';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+const require=createRequire(import.meta.url);
+const packageDir=path.resolve(path.dirname(require.resolve('socket.io')),'..');
+await mkdir(path.join(root,'public/vendor'),{recursive:true});
+const client=await readFile(path.join(packageDir,'client-dist/socket.io.esm.min.js'),'utf8');
+await writeFile(path.join(root,'public/vendor/socket.io.esm.min.js'),client.replace(/\/\/# sourceMappingURL=.*$/m,''));
+await copyFile(path.join(packageDir,'LICENSE'),path.join(root,'public/vendor/socket.io.LICENSE'));
+console.log('Local Socket.IO browser client prepared.');
